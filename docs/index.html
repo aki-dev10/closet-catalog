@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="服カタログ">
+<meta name="theme-color" content="#f6f4ef">
+<title>服カタログ</title>
+<style>
+:root {
+  --bg: #f6f4ef; --card: #fff; --ink: #24262b; --sub: #6c7078; --line: #e2ded5;
+  --accent: #2f5d50; --accent-ink: #fff; --warn: #b4571c; --danger: #a8322d;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17191c; --card: #22252a; --ink: #eceae5; --sub: #9a9fa8; --line: #33373e;
+          --accent: #6fb39f; --accent-ink: #10201b; --warn: #e39a5c; --danger: #e5766f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px; }
+.bar { display: flex; align-items: center; gap: 8px; }
+h1 { font-size: 18px; margin: 0; flex: 1; }
+#sync { font-size: 12px; color: var(--sub); }
+.btn { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: .5; }
+.filters { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; padding-bottom: 2px; }
+.filters select, .filters label { flex: none; border: 1px solid var(--line); background: var(--card);
+  border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.filters label { display: flex; align-items: center; gap: 4px; }
+main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
+#count { color: var(--sub); font-size: 13px; margin-bottom: 8px; }
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+@media (min-width: 700px) { #grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+.tile { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; cursor: pointer; padding: 0; text-align: left; display: block; width: 100%; }
+.tile img, .tile .ph { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--line); }
+.tile .cap { padding: 6px 8px 8px; font-size: 12px; }
+.tile .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.tile .sb { color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { position: absolute; top: 6px; left: 6px; background: var(--warn); color: #fff; font-size: 11px;
+  border-radius: 6px; padding: 1px 6px; }
+.tile.gone img { opacity: .4; }
+.tile.busy { cursor: default; }
+.tile.busy .ph { display: grid; place-items: center; color: var(--sub); font-size: 12px; }
+.empty { color: var(--sub); text-align: center; padding: 48px 0; }
+dialog { border: none; border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px); background: var(--card); color: var(--ink); }
+dialog::backdrop { background: rgba(0,0,0,.5); }
+.dlg { padding: 16px; display: grid; gap: 10px; }
+.dlg h2 { margin: 0; font-size: 16px; }
+.dlg .photo { width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg); border-radius: 8px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.f { display: grid; gap: 3px; font-size: 12px; color: var(--sub); min-width: 0; }
+.f input, .f select, .f textarea { border: 1px solid var(--line); background: var(--bg); border-radius: 8px;
+  padding: 8px; font-size: 16px; color: var(--ink); width: 100%; min-width: 0; }
+.checks { display: flex; gap: 6px; flex-wrap: wrap; }
+.checks label { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; color: var(--ink); font-size: 14px; }
+.checks label:has(input:checked) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.checks input { position: absolute; opacity: 0; pointer-events: none; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 4px; }
+.actions .sp { flex: 1; }
+.note { font-size: 12px; color: var(--sub); }
+#msg { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px;
+  max-width: calc(100vw - 32px); z-index: 20; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>服カタログ</h1>
+    <span id="sync"></span>
+    <button class="btn" id="btnCfg" aria-label="設定">設定</button>
+    <button class="btn primary" id="btnAdd">＋ 服を追加</button>
+    <input type="file" id="file" accept="image/*" multiple hidden>
+  </div>
+  <div class="filters">
+    <select id="fType" aria-label="種類"></select>
+    <select id="fSeason" aria-label="季節"></select>
+    <select id="fOwner" aria-label="持ち主"></select>
+    <select id="fStatus" aria-label="状態"></select>
+    <label><input type="checkbox" id="fReview"> 要確認のみ</label>
+  </div>
+</header>
+<main>
+  <div id="count"></div>
+  <div id="grid"></div>
+  <div class="empty" id="empty" hidden>まだ登録がありません。「＋ 服を追加」から写真を選んでください。</div>
+</main>
+
+<dialog id="dlgEdit">
+  <form class="dlg" id="formEdit">
+    <img class="photo" id="ePhoto" alt="">
+    <label class="f">名称<input id="eName" maxlength="40"></label>
+    <div class="row">
+      <label class="f">種類<select id="eType"></select></label>
+      <label class="f">持ち主<input id="eOwner" list="dlOwner"><datalist id="dlOwner"></datalist></label>
+    </div>
+    <div class="f">季節<div class="checks" id="eSeasons"></div></div>
+    <div class="row">
+      <label class="f">色<input id="eColor" maxlength="20"></label>
+      <label class="f">状態<select id="eStatus"></select></label>
+    </div>
+    <div class="row">
+      <label class="f">収納場所<input id="ePlace" list="dlPlace" placeholder="例: クローゼット、BOX-1"><datalist id="dlPlace"></datalist></label>
+      <label class="f">かさ（L）<input id="eVolume" type="number" min="0" step="0.1" inputmode="decimal"></label>
+    </div>
+    <label class="f">メモ<textarea id="eMemo" rows="2"></textarea></label>
+    <div class="note" id="eInfo"></div>
+    <div class="actions">
+      <button type="button" class="btn danger" id="eDelete">完全に削除</button>
+      <button type="button" class="btn" id="eDispose">処分済みにする</button>
+      <span class="sp"></span>
+      <button type="button" class="btn" id="eCancel">閉じる</button>
+      <button type="submit" class="btn primary" id="eSave">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgCfg">
+  <form class="dlg" id="formCfg">
+    <h2>接続の設定</h2>
+    <div class="note">この端末で最初に1回だけ入力します。</div>
+    <label class="f">データのURL（GASのウェブアプリURL）<input id="cUrl" type="url" required placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <label class="f">合言葉<input id="cPass" type="password" required autocomplete="current-password"></label>
+    <label class="f">AIのモデル<select id="cModel"><option value="sonnet">Sonnet（高精度）</option><option value="haiku">Haiku（速い・安い）</option></select></label>
+    <div class="actions">
+      <button type="button" class="btn" id="cShare">他の端末用リンクをコピー</button>
+      <span class="sp"></span>
+      <button type="button" class="btn" id="cCancel">閉じる</button>
+      <button type="submit" class="btn primary">保存して接続</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="msg" hidden></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter';
+let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
+let items = [];
+let meta = { types: [], seasons: ['春', '夏', '秋', '冬'], statuses: ['使用中', '保管中', '処分候補', '処分済み'], owners: [] };
+let pending = [];      // 登録中の仮タイル
+let editing = null;
+
+function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+
+// ---------- 端末内キャッシュ (IndexedDB) ----------
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('closet', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function cacheGet(key) {
+  try {
+    const db = await idb();
+    return await new Promise(res => {
+      const q = db.transaction('kv').objectStore('kv').get(key);
+      q.onsuccess = () => res(q.result); q.onerror = () => res(undefined);
+    });
+  } catch (e) { return undefined; }
+}
+async function cacheSet(key, val) {
+  try { const db = await idb(); db.transaction('kv', 'readwrite').objectStore('kv').put(val, key); } catch (e) { }
+}
+function persist() { cacheSet('items', items); cacheSet('meta', meta); }
+
+// ---------- 通信 ----------
+async function api(action, data) {
+  // Content-Type を指定しない(text/plain)ことでプリフライトを避ける
+  const r = await fetch(cfg.url, { method: 'POST', body: JSON.stringify(Object.assign({ pass: cfg.pass, action }, data)) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error === 'auth' ? '合言葉が違います' : j.error);
+  return j;
+}
+
+let msgTimer;
+function toast(t, ms) {
+  $('msg').textContent = t; $('msg').hidden = false;
+  clearTimeout(msgTimer); msgTimer = setTimeout(() => $('msg').hidden = true, ms || 3500);
+}
+
+async function sync() {
+  if (!cfg.url) return;
+  $('sync').textContent = '更新中…';
+  try {
+    const thumbs = new Map(items.filter(i => i.thumb).map(i => [i.id, i.thumb]));
+    const j = await api('list', { have: [...thumbs.keys()] });
+    items = j.items.map(i => i.thumb ? i : Object.assign(i, { thumb: thumbs.get(i.id) || '' }));
+    meta = j.meta;
+    persist(); buildOptions(); render();
+    $('sync').textContent = '';
+  } catch (e) {
+    $('sync').textContent = '未更新';
+    toast('更新できませんでした: ' + e.message, 6000);
+    if (e.message === '合言葉が違います') openCfg();
+  }
+}
+
+// ---------- 表示 ----------
+function opt(sel, list, first) {
+  const cur = sel.value;
+  sel.replaceChildren(...(first ? [new Option(first[1], first[0])] : []), ...list.map(v => Array.isArray(v) ? new Option(v[1], v[0]) : new Option(v, v)));
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+function buildOptions() {
+  const f = load(LS_FILTER) || {};
+  const types = meta.types.map(t => t.name);
+  const owners = [...new Set([...meta.owners, ...items.map(i => i.owner).filter(Boolean)])];
+  opt($('fType'), types, ['', '種類: すべて']);
+  opt($('fSeason'), meta.seasons, ['', '季節: すべて']);
+  opt($('fOwner'), owners, ['', '持ち主: すべて']);
+  opt($('fStatus'), [...meta.statuses, ['*', '状態: すべて']], ['', '処分済み以外']);
+  if (!buildOptions.done) {
+    for (const k of ['fType', 'fSeason', 'fOwner', 'fStatus']) if (f[k] && [...$(k).options].some(o => o.value === f[k])) $(k).value = f[k];
+    buildOptions.done = true;
+  }
+  opt($('eType'), types);
+  opt($('eStatus'), meta.statuses);
+  $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
+  $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
+  if (!$('eSeasons').children.length) {
+    $('eSeasons').replaceChildren(...meta.seasons.map(s => {
+      const l = document.createElement('label'), c = document.createElement('input');
+      c.type = 'checkbox'; c.value = s; l.append(c, s); return l;
+    }));
+  }
+}
+
+function seasonLabel(s) {
+  const a = (s || '').split(',').filter(Boolean);
+  return a.length >= meta.seasons.length ? '通年' : a.join('');
+}
+
+function visible() {
+  const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, st = $('fStatus').value, rv = $('fReview').checked;
+  return items.filter(i =>
+    (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) &&
+    (st === '*' || (st ? i.status === st : i.status !== '処分済み')) && (!rv || i.review === '未確認')
+  ).sort((a, b) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
+}
+
+function render() {
+  const list = visible();
+  const nodes = pending.map(p => {
+    const d = document.createElement('div'); d.className = 'tile busy';
+    const ph = document.createElement('div'); ph.className = 'ph'; ph.textContent = p.label;
+    d.append(ph); return d;
+  });
+  for (const it of list) {
+    const b = document.createElement('button');
+    b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '');
+    b.dataset.id = it.id;
+    const img = document.createElement(it.thumb ? 'img' : 'div');
+    if (it.thumb) { img.src = it.thumb; img.alt = it.name; img.loading = 'lazy'; } else img.className = 'ph';
+    const cap = document.createElement('div'); cap.className = 'cap';
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.name || '（名称なし）';
+    const sb = document.createElement('div'); sb.className = 'sb';
+    sb.textContent = [it.type, seasonLabel(it.seasons), it.status !== '使用中' ? it.status : ''].filter(Boolean).join('・');
+    cap.append(nm, sb); b.append(img, cap);
+    if (it.review === '未確認') { const g = document.createElement('span'); g.className = 'badge'; g.textContent = '要確認'; b.append(g); }
+    nodes.push(b);
+  }
+  $('grid').replaceChildren(...nodes);
+  const vol = list.reduce((a, i) => a + (Number(i.volume) || 0), 0);
+  $('count').textContent = list.length + ' 点' + (list.length ? '（かさ 約 ' + Math.round(vol) + ' L）' : '');
+  $('empty').hidden = items.length > 0 || pending.length > 0 || !cfg.url;
+}
+
+// ---------- 写真の縮小 ----------
+async function decode(file) {
+  try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { }
+  return await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im); im.onerror = () => rej(new Error('この形式の写真は読み込めません'));
+    im.src = URL.createObjectURL(file);
+  });
+}
+function draw(src, max, square) {
+  const w = src.width, h = src.height, c = document.createElement('canvas');
+  if (square) {
+    const s = Math.min(w, h); c.width = c.height = max;
+    c.getContext('2d').drawImage(src, (w - s) / 2, (h - s) / 2, s, s, 0, 0, max, max);
+  } else {
+    const k = Math.min(1, max / Math.max(w, h));
+    c.width = Math.round(w * k); c.height = Math.round(h * k);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  }
+  return c;
+}
+async function prepare(file) {
+  const src = await decode(file);
+  const photo = draw(src, 1200).toDataURL('image/jpeg', 0.82).split(',')[1];
+  const tc = draw(src, 240, true);
+  let q = 0.72, thumb = tc.toDataURL('image/jpeg', q);
+  while (thumb.length > 45000 && q > 0.3) { q -= 0.1; thumb = tc.toDataURL('image/jpeg', q); }
+  return { photo, thumb };
+}
+
+async function addFiles(files) {
+  if (!files.length) return;
+  if (!cfg.url) { openCfg(); return; }
+  const jobs = files.map((f, n) => ({ file: f, label: '待機中 ' + (n + 1) + '/' + files.length }));
+  pending.unshift(...jobs); render();
+  let ok = 0, aiErr = '';
+  for (const job of jobs) {
+    job.label = '登録中…'; render();
+    try {
+      const img = await prepare(job.file);
+      const j = await api('add', Object.assign(img, { owner: $('fOwner').value, model: cfg.model || 'sonnet' }));
+      items.push(j.item); ok++;
+      if (j.aiError) aiErr = j.aiError;
+    } catch (e) {
+      toast('登録できませんでした: ' + e.message, 6000);
+    }
+    pending.splice(pending.indexOf(job), 1);
+    persist(); buildOptions(); render();
+  }
+  if (ok) toast(aiErr ? ok + ' 点を登録しました（AI提案なし: ' + aiErr + '）' : ok + ' 点を登録しました。「要確認」をタップして内容を確認してください', 6000);
+}
+
+// ---------- 編集 ----------
+function openEdit(id) {
+  const it = items.find(i => i.id === id); if (!it) return;
+  editing = it;
+  $('ePhoto').src = it.thumb || '';
+  $('eName').value = it.name; $('eType').value = it.type; $('eOwner').value = it.owner;
+  $('eColor').value = it.color; $('eStatus').value = it.status; $('ePlace').value = it.place;
+  $('eVolume').value = it.volume; $('eMemo').value = it.memo;
+  const ss = (it.seasons || '').split(',');
+  for (const c of $('eSeasons').querySelectorAll('input')) c.checked = ss.includes(c.value);
+  $('eInfo').textContent = (it.review === '未確認' ? 'AIの提案です。確認して保存してください。　' : '') + '登録: ' + it.created;
+  $('eDelete').textContent = '完全に削除'; delete $('eDelete').dataset.armed;
+  $('eDispose').hidden = it.status === '処分済み';
+  $('dlgEdit').showModal();
+  // 元の大きい写真は開いてから取得
+  api('photo', { id }).then(j => { if (editing === it) $('ePhoto').src = 'data:image/jpeg;base64,' + j.photo; }).catch(() => { });
+}
+function defVol(type) { const t = meta.types.find(t => t.name === type); return t ? t.volume : 2; }
+
+async function saveEdit(extra) {
+  const it = editing;
+  const fields = Object.assign({
+    name: $('eName').value.trim(), type: $('eType').value, owner: $('eOwner').value.trim(),
+    color: $('eColor').value.trim(), status: $('eStatus').value, place: $('ePlace').value.trim(),
+    volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(),
+    seasons: [...$('eSeasons').querySelectorAll('input:checked')].map(c => c.value).join(','),
+    review: '済'
+  }, extra);
+  $('eSave').disabled = true;
+  try {
+    const j = await api('update', { id: it.id, fields });
+    Object.assign(it, j.item);
+    persist(); buildOptions(); render();
+    $('dlgEdit').close(); editing = null;
+  } catch (e) { toast('保存できませんでした: ' + e.message, 6000); }
+  $('eSave').disabled = false;
+}
+
+// ---------- 設定 ----------
+function openCfg() {
+  $('cUrl').value = cfg.url; $('cPass').value = cfg.pass; $('cModel').value = cfg.model || 'sonnet';
+  $('dlgCfg').showModal();
+}
+
+// ---------- イベント ----------
+$('btnAdd').onclick = () => cfg.url ? $('file').click() : openCfg();
+$('file').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; addFiles(fs); };
+$('btnCfg').onclick = openCfg;
+$('grid').onclick = e => { const t = e.target.closest('.tile[data-id]'); if (t) openEdit(t.dataset.id); };
+for (const k of ['fType', 'fSeason', 'fOwner', 'fStatus', 'fReview']) $(k).onchange = () => {
+  save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fStatus: $('fStatus').value });
+  render();
+};
+$('eType').onchange = () => {
+  // かさが前の種類の既定値のままなら、新しい種類の既定値に合わせる
+  if (editing && Number($('eVolume').value) === defVol(editing._type || editing.type)) $('eVolume').value = defVol($('eType').value);
+  if (editing) editing._type = $('eType').value;
+};
+$('formEdit').onsubmit = e => { e.preventDefault(); saveEdit(); };
+$('eCancel').onclick = () => { $('dlgEdit').close(); editing = null; };
+$('eDispose').onclick = () => saveEdit({ status: '処分済み' });
+$('eDelete').onclick = async () => {
+  const b = $('eDelete');
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'もう一度押すと削除'; return; }
+  const it = editing; b.disabled = true;
+  try {
+    await api('remove', { id: it.id });
+    items = items.filter(i => i !== it); persist(); render();
+    $('dlgEdit').close(); editing = null;
+  } catch (e) { toast('削除できませんでした: ' + e.message, 6000); }
+  b.disabled = false;
+};
+$('formCfg').onsubmit = e => {
+  e.preventDefault();
+  cfg = { url: $('cUrl').value.trim(), pass: $('cPass').value, model: $('cModel').value };
+  save(LS_CFG, cfg); $('dlgCfg').close(); sync();
+};
+$('cCancel').onclick = () => $('dlgCfg').close();
+$('cShare').onclick = async () => {
+  const link = location.origin + location.pathname + '#u=' + encodeURIComponent($('cUrl').value.trim());
+  try { await navigator.clipboard.writeText(link); toast('リンクをコピーしました。合言葉は別に伝えてください'); }
+  catch (e) { toast(link, 15000); }
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !pending.length && !editing) sync(); });
+
+// ---------- 起動 ----------
+(async function init() {
+  const m = location.hash.match(/^#u=(.+)$/);
+  if (m && !cfg.url) { cfg.url = decodeURIComponent(m[1]); history.replaceState(null, '', location.pathname); }
+  const [ci, cm] = await Promise.all([cacheGet('items'), cacheGet('meta')]);
+  if (ci) items = ci;
+  if (cm) meta = cm;
+  buildOptions(); render();           // 前回のデータをすぐ表示
+  if (!cfg.url || !cfg.pass) openCfg(); else sync();   // 最新は裏で取得
+})();
+</script>
+</body>
+</html>
