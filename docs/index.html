@@ -128,8 +128,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 <dialog id="dlgCfg">
   <form class="dlg" id="formCfg">
     <h2>接続の設定</h2>
-    <div class="note">この端末で最初に1回だけ入力します。</div>
-    <label class="f">データのURL（GASのウェブアプリURL）<input id="cUrl" type="url" required placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <div class="note">合言葉は、この端末で最初に1回だけ入力します。</div>
+    <label class="f">データのURL（通常は変更不要）<input id="cUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
     <label class="f">合言葉<input id="cPass" type="password" required autocomplete="current-password"></label>
     <label class="f">AIのモデル<select id="cModel"><option value="sonnet">Sonnet（高精度）</option><option value="haiku">Haiku（速い・安い）</option></select></label>
     <div class="actions">
@@ -147,7 +147,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 'use strict';
 const $ = id => document.getElementById(id);
 const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter';
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxD0iBAGK9b_sbjS_Iyd4sjf1DcdiiWK0wrf61wtsIHMClc-EpcaMVWtCiOw3xdD6Zs/exec';
 let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
+if (!cfg.url) cfg.url = DEFAULT_URL;
 let items = [];
 let meta = { types: [], seasons: ['春', '夏', '秋', '冬'], statuses: ['使用中', '保管中', '処分候補', '処分済み'], owners: [] };
 let pending = [];      // 登録中の仮タイル
@@ -407,7 +409,7 @@ $('eDelete').onclick = async () => {
 };
 $('formCfg').onsubmit = e => {
   e.preventDefault();
-  cfg = { url: $('cUrl').value.trim(), pass: $('cPass').value, model: $('cModel').value };
+  cfg = { url: $('cUrl').value.trim() || DEFAULT_URL, pass: $('cPass').value, model: $('cModel').value };
   save(LS_CFG, cfg); $('dlgCfg').close(); sync();
 };
 $('cCancel').onclick = () => $('dlgCfg').close();
