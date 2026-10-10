@@ -31,7 +31,8 @@ h1 { font-size: 18px; margin: 0; flex: 1; }
 .btn.danger { color: var(--danger); }
 .btn:disabled { opacity: .5; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.filters select, .filters label { flex: none; border: 1px solid var(--line); background: var(--card);
+.filters input[type=search] { width: 130px; color: var(--ink); }
+.filters select, .filters label, .filters input[type=search] { flex: none; border: 1px solid var(--line); background: var(--card);
   border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .filters label { display: flex; align-items: center; gap: 4px; }
 .filters button { flex: none; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
@@ -106,6 +107,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <select id="fSeason" aria-label="季節"></select>
     <select id="fOwner" aria-label="持ち主"></select>
     <select id="fColor" aria-label="色"></select>
+    <select id="fPlace" aria-label="収納場所"></select>
+    <input id="fQ" type="search" placeholder="検索" aria-label="検索">
     <select id="fStatus" aria-label="状態"></select>
     <label><input type="checkbox" id="fReview"> 要確認のみ</label>
     <button type="button" id="btnSel">まとめて変更</button>
@@ -141,7 +144,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
       <label class="f">状態<select id="eStatus"></select></label>
     </div>
     <div class="row">
-      <label class="f">収納場所<input id="ePlace" list="dlPlace" placeholder="例: クローゼット、BOX-1"><datalist id="dlPlace"></datalist></label>
+      <label class="f">収納場所<select id="ePlace"></select></label>
       <label class="f">かさ（L）<input id="eVolume" type="number" min="0" step="0.1" inputmode="decimal"></label>
     </div>
     <div class="row">
@@ -184,7 +187,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <h3>BOXの目安</h3>
     <label class="f">BOX 1個の容量（L）<input id="sBox" type="number" min="1" step="1" inputmode="numeric"></label>
     <div class="box" id="sumBox"></div>
-    <div class="note">容量の8割まで詰める想定の概算です。</div>
+    <div class="note">ハンガーに掛ける服は除き、容量の8割まで詰める想定の概算です。</div>
     <div class="actions"><button type="button" class="btn" id="sClose">閉じる</button></div>
   </div>
 </dialog>
@@ -192,7 +195,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 <div id="bulk" hidden>
   <div id="bulkN"></div>
   <select id="bSeason"></select>
-  <input id="bPlace" list="dlPlace" placeholder="収納場所（変えないなら空欄）">
+  <select id="bPlace"></select>
   <select id="bStatus"></select>
   <button class="btn" id="bAll">表示中をすべて選択</button>
   <button class="btn" id="bTidy">写真をAIで整える</button>
@@ -204,6 +207,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
+// 収納場所の選択肢 [名前, 補足]
+const PLACES = [['WICのBOX', 'オフシーズン'], ['WICのハンガー', 'オフシーズン'], ['玄関のハンガー', '外出時・アウター'], ['2Fのハンガー', 'よく使う'], ['2Fの棚', 'よく使う']];
 const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter', LS_BOX = 'closet.box';
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxD0iBAGK9b_sbjS_Iyd4sjf1DcdiiWK0wrf61wtsIHMClc-EpcaMVWtCiOw3xdD6Zs/exec';
 let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
@@ -287,10 +292,11 @@ function buildOptions() {
   opt($('fSeason'), meta.seasons, ['', '季節: すべて']);
   opt($('fOwner'), owners, ['', '持ち主: すべて']);
   const used = new Set(items.map(i => i.color).filter(Boolean));
+  opt($('fPlace'), [...PLACES.map(p => p[0]), ...[...new Set(items.map(i => i.place).filter(Boolean))].filter(p => !PLACES.some(x => x[0] === p)), ['-', '（未設定）']], ['', '収納場所: すべて']);
   opt($('fColor'), [...(meta.colors || []).filter(c => used.has(c)), ...[...used].filter(c => !(meta.colors || []).includes(c))], ['', '色: すべて']);
   opt($('fStatus'), [...meta.statuses, ['*', '状態: すべて']], ['', '処分済み以外']);
   if (!buildOptions.done) {
-    for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fStatus']) if (f[k] && [...$(k).options].some(o => o.value === f[k])) $(k).value = f[k];
+    for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fPlace', 'fStatus']) if (f[k] && [...$(k).options].some(o => o.value === f[k])) $(k).value = f[k];
     buildOptions.done = true;
   }
   opt($('eType'), types);
@@ -299,7 +305,9 @@ function buildOptions() {
   opt($('bSeason'), [...meta.seasons.map(s => ['in:' + s, s + 'にしまう服を選ぶ']), ...meta.seasons.map(s => ['out:' + s, s + 'に出す服を選ぶ'])], ['', '衣替え: 季節で選ぶ…']);
   $('dlColor').replaceChildren(...(meta.colors || []).map(o => new Option(o)));
   $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
-  $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
+  const places = [...PLACES.map(p => [p[0], p[0] + '（' + p[1] + '）']), ...[...new Set(items.map(i => i.place).filter(Boolean))].filter(p => !PLACES.some(x => x[0] === p))];
+  opt($('ePlace'), places, ['', '（未設定）']);
+  opt($('bPlace'), places, ['', '収納場所: 変えない']);
   if ($('eSeasons').children.length !== meta.seasons.length) {
     $('eSeasons').replaceChildren(...meta.seasons.map(s => {
       const l = document.createElement('label'), c = document.createElement('input');
@@ -342,9 +350,11 @@ function cmp(a, b) {
   return rank(a) - rank(b) || b.created.localeCompare(a.created) || b.id.localeCompare(a.id);
 }
 function visible() {
-  const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, st = $('fStatus').value, rv = $('fReview').checked;
+  const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, pl = $('fPlace').value, st = $('fStatus').value, rv = $('fReview').checked;
+  const qs = $('fQ').value.trim().toLowerCase().split(' ').filter(Boolean);
   return items.filter(i =>
-    (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) && (!c || i.color === c) &&
+    (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) && (!c || i.color === c) && (!pl || (pl === '-' ? !i.place : i.place === pl)) &&
+    (!qs.length || qs.every(q => [i.name, i.type, i.color, i.place, i.memo, i.owner, i.tags, i.bought, i.seasons, i.status].join(' ').toLowerCase().includes(q))) &&
     (st === '*' || (st ? i.status === st : i.status !== '処分済み')) && (!rv || i.review === '未確認')
   ).sort(cmp);
 }
@@ -627,7 +637,7 @@ function sumTable(title, list, keyFn) {
 }
 function boxCalc() {
   const cap = Number($('sBox').value) || 0; save(LS_BOX, cap);
-  const vol = visible().reduce((a, i) => a + (Number(i.volume) || 0), 0);
+  const vol = visible().filter(i => !(i.place || '').includes('ハンガー')).reduce((a, i) => a + (Number(i.volume) || 0), 0);
   $('sumBox').textContent = cap > 0 ? '合計 約 ' + Math.round(vol) + ' L → 必要なBOXは 約 ' + Math.ceil(vol / (cap * 0.8)) + ' 個' : '';
 }
 $('btnSum').onclick = () => {
@@ -641,8 +651,9 @@ $('btnSum').onclick = () => {
 };
 $('sBox').oninput = boxCalc;
 $('sClose').onclick = () => $('dlgSum').close();
-for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fStatus', 'fReview']) $(k).onchange = () => {
-  save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fColor: $('fColor').value, fStatus: $('fStatus').value });
+$('fQ').oninput = () => render();
+for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fPlace', 'fStatus', 'fReview']) $(k).onchange = () => {
+  save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fColor: $('fColor').value, fPlace: $('fPlace').value, fStatus: $('fStatus').value });
   render();
 };
 $('eType').onchange = () => {
