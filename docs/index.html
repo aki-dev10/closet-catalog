@@ -63,6 +63,7 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 .ht { background: linear-gradient(90deg, #e6007e, #e60012 55%, #f08300); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; letter-spacing: .02em; }
 .hb { position: absolute; top: 6px; right: 6px; background: #fff; border-radius: 4px; padding: 1px 5px; font-size: 9px; line-height: 1.4; }
 .checks label:has(#eHeat:checked) { background: #fff; border-color: #e60012; box-shadow: 0 0 0 1px #e60012; }
+.yr { position: absolute; right: 6px; top: 0; margin-top: calc(100% - 22px); background: rgba(0,0,0,.55); color: #fff; font-size: 10px; line-height: 1.6; padding: 0 7px; border-radius: 8px; }
 .badge { position: absolute; top: 6px; left: 6px; background: var(--warn); color: #fff; font-size: 11px;
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
@@ -145,8 +146,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     </div>
     <div class="row">
       <label class="f">購入価格（円）<input id="ePrice" type="number" min="0" step="1" inputmode="numeric"></label>
-      <label class="f">メモ<input id="eMemo"></label>
+      <label class="f">購入日<input id="eBought" maxlength="12" placeholder="例: 2024 / 2024-05-10"></label>
     </div>
+    <label class="f">メモ<input id="eMemo"></label>
     <div class="note" id="eInfo"></div>
     <div class="actions">
       <button type="button" class="btn danger" id="eDelete">完全に削除</button>
@@ -369,6 +371,7 @@ function render() {
     cap.append(nm, sb); b.append(img, cap);
     if (it.review === '未確認') { const g = document.createElement('span'); g.className = 'badge'; g.textContent = '要確認'; b.append(g); }
     if (hasTag(it, 'HEATTECH')) { const g = document.createElement('span'); g.className = 'hb'; const x = document.createElement('span'); x.className = 'ht'; x.textContent = 'HEATTECH'; g.append(x); b.append(g); }
+    if (it.bought) { const y = document.createElement('span'); y.className = 'yr'; y.textContent = String(it.bought).slice(0, 4); y.title = '購入日: ' + it.bought; b.append(y); }
     nodes.push(b);
   }
   $('grid').replaceChildren(...nodes);
@@ -472,7 +475,7 @@ function openEdit(id) {
   $('ePhoto').src = it.thumb || '';
   $('eName').value = it.name; $('eType').value = it.type; $('eOwner').value = it.owner;
   $('eColor').value = it.color; $('eStatus').value = it.status; $('ePlace').value = it.place;
-  $('eVolume').value = it.volume; $('eMemo').value = it.memo; $('ePrice').value = it.price || ''; $('eHeat').checked = hasTag(it, 'HEATTECH');
+  $('eVolume').value = it.volume; $('eMemo').value = it.memo; $('ePrice').value = it.price || ''; $('eHeat').checked = hasTag(it, 'HEATTECH'); $('eBought').value = it.bought || '';
   const ss = (it.seasons || '').split(',');
   for (const c of $('eSeasons').querySelectorAll('input')) c.checked = ss.includes(c.value);
   $('eInfo').textContent = (it.review === '未確認' ? 'AIの提案です。確認して保存してください。　' : '') + '登録: ' + it.created;
@@ -484,12 +487,22 @@ function openEdit(id) {
 }
 function defVol(type) { const t = meta.types.find(t => t.name === type); return t ? t.volume : 2; }
 
+// 購入日をそろえる。年だけ・年月だけも可。形がおかしければ null
+function normDate(v) {
+  v = v.trim().split('/').join('-').replace(/[.年月]/g, '-').replace(/日/g, '').replace(/-+$/, '');
+  if (!v) return '';
+  if (/^(19|20)[0-9]{6}$/.test(v)) v = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6);
+  if (!/^(19|20)[0-9]{2}(-[0-9]{1,2}(-[0-9]{1,2})?)?$/.test(v)) return null;
+  return v.split('-').map((p, n) => n ? p.padStart(2, '0') : p).join('-');
+}
 async function saveEdit(extra) {
   const it = editing;
+  const bought = normDate($('eBought').value);
+  if (bought === null) { toast('購入日は 2024 または 2024-05-10 の形で入力してください', 6000); return; }
   const fields = Object.assign({
     name: $('eName').value.trim(), type: $('eType').value, owner: $('eOwner').value.trim(),
     color: $('eColor').value.trim(), status: $('eStatus').value, place: $('ePlace').value.trim(),
-    volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(), price: $('ePrice').value.trim(),
+    volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(), price: $('ePrice').value.trim(), bought,
     tags: [...(it.tags || '').split(',').filter(t => t && t !== 'HEATTECH'), ...($('eHeat').checked ? ['HEATTECH'] : [])].join(','),
     seasons: [...$('eSeasons').querySelectorAll('input:checked')].map(c => c.value).join(','),
     review: '済'
