@@ -74,7 +74,8 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
 .tile.sport .cap { background: #e3f0fc; }
-.brk { grid-column: 1 / -1; font-size: 13px; font-weight: 600; color: var(--sub); margin-top: 8px; }
+.brk { grid-column: 1 / -1; justify-self: start; font: inherit; font-size: 13px; font-weight: 600; color: var(--sub); margin-top: 8px; background: none; border: 0; padding: 4px 8px 4px 0; cursor: pointer; text-align: left; }
+.brk.fold { opacity: .75; }
 .brk:first-child { margin-top: 0; }
 @media (prefers-color-scheme: dark) { .tile.sport .cap { background: #1d2f42; } }
 .tile.busy { cursor: default; }
@@ -355,6 +356,10 @@ function rank(i) {
   return 600 + (k < 0 ? 99 : k);
 }
 // 見出しの区切り
+// たたんでいる区切り（端末ごとに覚える）
+const LS_FOLD = 'closet.fold';
+const folded = new Set(load(LS_FOLD) || []);
+const shown = () => visible().filter(i => !folded.has(GROUPS[group(i)]));   // 絞り込み後、かつ、たたんでいないもの
 const GROUPS = ['アウター', 'トップス（長袖）', 'トップス（半袖）', 'ボトムス', 'その他', 'スポーツウェア'];
 function group(i) { const r = rank(i); return r < 100 ? 0 : r < 200 ? 1 : r < 300 ? 2 : r < 600 ? 3 : r < 900 ? 4 : 5; }
 // 並び: グループ → 手動の並び順（ドラッグで決めたもの） → 自動の順
@@ -385,8 +390,14 @@ function render() {
   let lastGroup = null;
   for (const it of list) {
     const grp = group(it);
-    if (grp !== lastGroup) { const k = document.createElement('div'); k.className = 'brk'; k.textContent = GROUPS[grp] + ' ' + list.filter(x => group(x) === grp).length + '点'; nodes.push(k); }
+    if (grp !== lastGroup) {
+      const k = document.createElement('button'), shut = folded.has(GROUPS[grp]);
+      k.type = 'button'; k.className = 'brk' + (shut ? ' fold' : ''); k.dataset.g = GROUPS[grp]; k.setAttribute('aria-expanded', String(!shut));
+      k.textContent = (shut ? '▸ ' : '▾ ') + GROUPS[grp] + ' ' + list.filter(x => group(x) === grp).length + '点' + (shut ? '（非表示）' : '');
+      nodes.push(k);
+    }
     lastGroup = grp;
+    if (folded.has(GROUPS[grp])) continue;   // たたんだ区切りは写真を出さない
     const b = document.createElement('button');
     b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
     b.dataset.id = it.id; b.draggable = true;
@@ -567,6 +578,12 @@ $('file').onchange = e => { const fs = [...e.target.files]; e.target.value = '';
 $('btnCfg').onclick = openCfg;
 $('count').onclick = () => { if ($('count').title) toast($('count').title); };
 $('grid').onclick = e => {
+  const hd = e.target.closest('.brk');
+  if (hd) {   // 見出しを押すと、その区切りをたたむ／開く
+    folded.has(hd.dataset.g) ? folded.delete(hd.dataset.g) : folded.add(hd.dataset.g);
+    for (const i of items) if (folded.has(GROUPS[group(i)])) selected.delete(i.id);
+    save(LS_FOLD, [...folded]); render(); return;
+  }
   const t = e.target.closest('.tile[data-id]'); if (!t) return;
   if (!selMode) { openEdit(t.dataset.id); return; }
   selected.has(t.dataset.id) ? selected.delete(t.dataset.id) : selected.add(t.dataset.id);
@@ -601,7 +618,7 @@ $('btnSel').onclick = () => {
 $('bSeason').onchange = () => {
   const [mode, s] = $('bSeason').value.split(':'); if (!s) return;
   selected.clear();
-  for (const i of visible()) {
+  for (const i of shown()) {
     const ss = (i.seasons || '').split(',').filter(Boolean); if (!ss.length) continue;
     if (mode === 'in' ? (i.status === '使用中' && !ss.includes(s)) : (i.status === '保管中' && ss.includes(s))) selected.add(i.id);
   }
@@ -609,7 +626,7 @@ $('bSeason').onchange = () => {
   $('bSeason').value = ''; render();
   toast(selected.size + ' 点を選びました。確認して「適用」を押してください', 6000);
 };
-$('bAll').onclick = () => { for (const i of visible()) selected.add(i.id); render(); };
+$('bAll').onclick = () => { for (const i of shown()) selected.add(i.id); render(); };
 $('bApply').onclick = async () => {
   const fields = {};
   if ($('bPlace').value.trim()) fields.place = $('bPlace').value.trim();
