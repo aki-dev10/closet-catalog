@@ -65,6 +65,7 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
 .tile.sport .cap { background: #e3f0fc; }
+.brk { grid-column: 1 / -1; height: 4px; }
 @media (prefers-color-scheme: dark) { .tile.sport .cap { background: #1d2f42; } }
 .tile.busy { cursor: default; }
 .tile.busy .ph { display: grid; place-items: center; color: var(--sub); font-size: 12px; }
@@ -309,7 +310,7 @@ function seasonLabel(s) {
 const TOPS = ['Tシャツ', 'シャツ', 'ニット', 'パーカー・スウェット', 'ジャケット', 'コート・ダウン'];
 // 並び順: 長袖 → 半袖 → 長ズボン → 半ズボン → その他 → スポーツウェア（最後）
 function rank(i) {
-  if (i.type === 'スポーツウェア') return 900;
+  if (i.type === 'スポーツウェア') return /パンツ|ショーツ|ズボン|タイツ|レギンス|スパッツ/.test(i.name) ? 920 : /長袖/.test(i.name) ? 900 : 910;
   if (i.type === 'パンツ') return 300;
   if (i.type === 'ショートパンツ') return 400;
   const t = TOPS.indexOf(i.type);
@@ -335,7 +336,9 @@ function render() {
     const ph = document.createElement('div'); ph.className = 'ph'; ph.textContent = p.label;
     d.append(ph); return d;
   });
+  let sportBreak = false;
   for (const it of list) {
+    if (it.type === 'スポーツウェア' && !sportBreak) { sportBreak = true; if (nodes.length) { const k = document.createElement('div'); k.className = 'brk'; nodes.push(k); } }
     const b = document.createElement('button');
     b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
     b.dataset.id = it.id;
