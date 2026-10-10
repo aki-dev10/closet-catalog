@@ -321,6 +321,8 @@ function rank(i) {
   const k = meta.types.findIndex(x => x.name === i.type);
   return 600 + (k < 0 ? 99 : k);
 }
+// 改行の区切り: トップス / ボトムス / その他 / スポーツウェア
+function group(i) { const r = rank(i); return r < 300 ? 0 : r < 600 ? 1 : r < 900 ? 2 : 3; }
 function visible() {
   const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, st = $('fStatus').value, rv = $('fReview').checked;
   return items.filter(i =>
@@ -336,9 +338,11 @@ function render() {
     const ph = document.createElement('div'); ph.className = 'ph'; ph.textContent = p.label;
     d.append(ph); return d;
   });
-  let sportBreak = false;
+  let lastGroup = null;
   for (const it of list) {
-    if (it.type === 'スポーツウェア' && !sportBreak) { sportBreak = true; if (nodes.length) { const k = document.createElement('div'); k.className = 'brk'; nodes.push(k); } }
+    const grp = group(it);
+    if (lastGroup !== null && grp !== lastGroup) { const k = document.createElement('div'); k.className = 'brk'; nodes.push(k); }
+    lastGroup = grp;
     const b = document.createElement('button');
     b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
     b.dataset.id = it.id;
