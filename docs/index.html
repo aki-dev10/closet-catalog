@@ -65,7 +65,8 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
 .tile.sport .cap { background: #e3f0fc; }
-.brk { grid-column: 1 / -1; height: 4px; }
+.brk { grid-column: 1 / -1; font-size: 13px; font-weight: 600; color: var(--sub); margin-top: 8px; }
+.brk:first-child { margin-top: 0; }
 @media (prefers-color-scheme: dark) { .tile.sport .cap { background: #1d2f42; } }
 .tile.busy { cursor: default; }
 .tile.busy .ph { display: grid; place-items: center; color: var(--sub); font-size: 12px; }
@@ -106,9 +107,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <label><input type="checkbox" id="fReview"> 要確認のみ</label>
     <button type="button" id="btnSel">まとめて変更</button>
     <button type="button" id="btnSum">集計</button>
+    <span id="count"></span>
     <span id="sync"></span>
     <button type="button" id="btnCfg">設定</button>
-    <span id="count"></span>
     <button type="button" class="primary" id="btnAdd">＋ 服を追加</button>
     <input type="file" id="file" accept="image/*" multiple hidden>
   </div>
@@ -186,6 +187,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 
 <div id="bulk" hidden>
   <div id="bulkN"></div>
+  <select id="bSeason"></select>
   <input id="bPlace" list="dlPlace" placeholder="収納場所（変えないなら空欄）">
   <select id="bStatus"></select>
   <button class="btn" id="bAll">表示中をすべて選択</button>
@@ -290,6 +292,7 @@ function buildOptions() {
   opt($('eType'), types);
   opt($('eStatus'), meta.statuses);
   opt($('bStatus'), meta.statuses, ['', '状態: 変えない']);
+  opt($('bSeason'), [...meta.seasons.map(s => ['in:' + s, s + 'にしまう服を選ぶ']), ...meta.seasons.map(s => ['out:' + s, s + 'に出す服を選ぶ'])], ['', '衣替え: 季節で選ぶ…']);
   $('dlColor').replaceChildren(...(meta.colors || []).map(o => new Option(o)));
   $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
   $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
@@ -321,7 +324,8 @@ function rank(i) {
   const k = meta.types.findIndex(x => x.name === i.type);
   return 600 + (k < 0 ? 99 : k);
 }
-// 改行の区切り: トップス / ボトムス / その他 / スポーツウェア
+// 見出しの区切り
+const GROUPS = ['トップス', 'ボトムス', 'その他', 'スポーツウェア'];
 function group(i) { const r = rank(i); return r < 300 ? 0 : r < 600 ? 1 : r < 900 ? 2 : 3; }
 function visible() {
   const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, st = $('fStatus').value, rv = $('fReview').checked;
@@ -341,7 +345,7 @@ function render() {
   let lastGroup = null;
   for (const it of list) {
     const grp = group(it);
-    if (lastGroup !== null && grp !== lastGroup) { const k = document.createElement('div'); k.className = 'brk'; nodes.push(k); }
+    if (grp !== lastGroup) { const k = document.createElement('div'); k.className = 'brk'; k.textContent = GROUPS[grp] + ' ' + list.filter(x => group(x) === grp).length + '点'; nodes.push(k); }
     lastGroup = grp;
     const b = document.createElement('button');
     b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
@@ -511,6 +515,17 @@ $('btnSel').onclick = () => {
   selMode = !selMode; selected.clear();
   $('btnSel').textContent = selMode ? '変更を終了' : 'まとめて変更'; $('btnSel').classList.toggle('on', selMode);
   render();
+};
+$('bSeason').onchange = () => {
+  const [mode, s] = $('bSeason').value.split(':'); if (!s) return;
+  selected.clear();
+  for (const i of visible()) {
+    const ss = (i.seasons || '').split(',').filter(Boolean); if (!ss.length) continue;
+    if (mode === 'in' ? (i.status === '使用中' && !ss.includes(s)) : (i.status === '保管中' && ss.includes(s))) selected.add(i.id);
+  }
+  $('bStatus').value = mode === 'in' ? '保管中' : '使用中';
+  $('bSeason').value = ''; render();
+  toast(selected.size + ' 点を選びました。確認して「適用」を押してください', 6000);
 };
 $('bAll').onclick = () => { for (const i of visible()) selected.add(i.id); render(); };
 $('bApply').onclick = async () => {
