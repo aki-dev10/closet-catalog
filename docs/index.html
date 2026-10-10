@@ -65,6 +65,11 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 .hb { position: absolute; top: 6px; right: 6px; background: #fff; border-radius: 4px; padding: 1px 5px; font-size: 9px; line-height: 1.4; }
 .checks label:has(#eHeat:checked) { background: #fff; border-color: #e60012; box-shadow: 0 0 0 1px #e60012; }
 .yr { position: absolute; right: 6px; top: 0; margin-top: calc(100% - 22px); background: rgba(0,0,0,.55); color: #fff; font-size: 10px; line-height: 1.6; padding: 0 7px; border-radius: 8px; }
+/* 状態（使用中以外）は写真の左下に出す */
+.st { position: absolute; left: 6px; top: 0; margin-top: calc(100% - 22px); color: #fff; font-size: 10px; line-height: 1.6; padding: 0 7px; border-radius: 8px; }
+.st.keep { background: #3f5f7d; }
+.st.cand { background: #b3352f; }
+.st.gone { background: #6b6b6b; }
 .badge { position: absolute; top: 6px; left: 6px; background: var(--warn); color: #fff; font-size: 11px;
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
@@ -390,10 +395,11 @@ function render() {
     const cap = document.createElement('div'); cap.className = 'cap';
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.name || '（名称なし）';
     const sb = document.createElement('div'); sb.className = 'sb';
-    sb.textContent = [it.type, seasonLabel(it.seasons), it.status !== '使用中' ? it.status : ''].filter(Boolean).join('・');
+    sb.textContent = [it.type, seasonLabel(it.seasons)].filter(Boolean).join('・');
     cap.append(nm, sb); b.append(img, cap);
     if (it.review === '未確認') { const g = document.createElement('span'); g.className = 'badge'; g.textContent = '要確認'; b.append(g); }
     if (hasTag(it, 'HEATTECH')) { const g = document.createElement('span'); g.className = 'hb'; const x = document.createElement('span'); x.className = 'ht'; x.textContent = 'HEATTECH'; g.append(x); b.append(g); }
+    if (it.status && it.status !== '使用中') { const z = document.createElement('span'); z.className = 'st ' + ({ '保管中': 'keep', '処分候補': 'cand' }[it.status] || 'gone'); z.textContent = it.status; b.append(z); }
     if (it.bought) { const y = document.createElement('span'); y.className = 'yr'; y.textContent = String(it.bought).slice(0, 4); y.title = '購入日: ' + it.bought; b.append(y); }
     nodes.push(b);
   }
