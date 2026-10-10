@@ -202,7 +202,7 @@ const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxD0iBAGK9b_sbjS_Iy
 let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
 if (!cfg.url) cfg.url = DEFAULT_URL;
 let items = [];
-let meta = { types: [], seasons: ['春', '夏', '秋', '冬'], statuses: ['使用中', '保管中', '処分候補', '処分済み'], owners: [] };
+let meta = { types: [], seasons: ['春秋', '夏', '冬'], statuses: ['使用中', '保管中', '処分候補', '処分済み'], owners: [] };
 let pending = [];      // 登録中の仮タイル
 let editing = null;
 let selMode = false;
@@ -292,7 +292,7 @@ function buildOptions() {
   $('dlColor').replaceChildren(...(meta.colors || []).map(o => new Option(o)));
   $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
   $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
-  if (!$('eSeasons').children.length) {
+  if ($('eSeasons').children.length !== meta.seasons.length) {
     $('eSeasons').replaceChildren(...meta.seasons.map(s => {
       const l = document.createElement('label'), c = document.createElement('input');
       c.type = 'checkbox'; c.value = s; l.append(c, s); return l;
