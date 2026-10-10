@@ -307,9 +307,9 @@ function seasonLabel(s) {
 }
 
 const TOPS = ['Tシャツ', 'シャツ', 'ニット', 'パーカー・スウェット', 'ジャケット', 'コート・ダウン'];
-// 並び順: 長袖 → 半袖 → 長ズボン → 半ズボン → スポーツウェア → その他
+// 並び順: 長袖 → 半袖 → 長ズボン → 半ズボン → その他 → スポーツウェア（最後）
 function rank(i) {
-  if (i.type === 'スポーツウェア') return 500;
+  if (i.type === 'スポーツウェア') return 900;
   if (i.type === 'パンツ') return 300;
   if (i.type === 'ショートパンツ') return 400;
   const t = TOPS.indexOf(i.type);
