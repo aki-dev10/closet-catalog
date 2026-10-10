@@ -134,6 +134,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <div class="actions">
       <button type="button" class="btn danger" id="eDelete">完全に削除</button>
       <button type="button" class="btn" id="eDispose">処分済みにする</button>
+      <button type="button" class="btn" id="eRotate">写真を90°回転</button>
       <span class="sp"></span>
       <button type="button" class="btn" id="eCancel">閉じる</button>
       <button type="submit" class="btn primary" id="eSave">保存</button>
@@ -239,9 +240,9 @@ async function sync() {
   if (!cfg.url) return;
   $('sync').textContent = '更新中…';
   try {
-    const thumbs = new Map(items.filter(i => i.thumb).map(i => [i.id, i.thumb]));
+    const thumbs = new Map(items.filter(i => i.thumb).map(i => [i.photoId, i.thumb]));
     const j = await api('list', { have: [...thumbs.keys()] });
-    items = j.items.map(i => i.thumb ? i : Object.assign(i, { thumb: thumbs.get(i.id) || '' }));
+    items = j.items.map(i => i.thumb ? i : Object.assign(i, { thumb: thumbs.get(i.photoId) || '' }));
     meta = j.meta;
     persist(); buildOptions(); render();
     $('sync').textContent = '';
@@ -347,8 +348,15 @@ function draw(src, max, square) {
   }
   return c;
 }
-async function prepare(file) {
-  const src = await decode(file);
+function rotated(src, deg) {
+  const c = document.createElement('canvas'), swap = deg % 180 !== 0;
+  c.width = swap ? src.height : src.width; c.height = swap ? src.width : src.height;
+  const x = c.getContext('2d');
+  x.translate(c.width / 2, c.height / 2); x.rotate(deg * Math.PI / 180);
+  x.drawImage(src, -src.width / 2, -src.height / 2);
+  return c;
+}
+function encode(src) {
   const photo = draw(src, 1200).toDataURL('image/jpeg', 0.82).split(',')[1];
   const tc = draw(src, 240, true);
   let q = 0.72, thumb = tc.toDataURL('image/jpeg', q);
@@ -365,8 +373,16 @@ async function addFiles(files) {
   for (const job of jobs) {
     job.label = '登録中…'; render();
     try {
-      const img = await prepare(job.file);
-      const j = await api('add', Object.assign(img, { owner: $('fOwner').value, model: cfg.model || 'sonnet' }));
+      const src = await decode(job.file);
+      const j = await api('add', Object.assign(encode(src), { owner: $('fOwner').value, model: cfg.model || 'sonnet' }));
+      if (j.rotate) {
+        job.label = '向きを調整中…'; render();
+        try {
+          const img = encode(rotated(src, j.rotate));
+          const k = await api('replacePhoto', Object.assign({ id: j.item.id }, img));
+          j.item.thumb = img.thumb; j.item.photoId = k.photoId;
+        } catch (e) { }
+      }
       items.push(j.item); ok++;
       if (j.aiError) aiErr = j.aiError;
     } catch (e) {
@@ -503,6 +519,18 @@ $('eDelete').onclick = async () => {
     items = items.filter(i => i !== it); persist(); render();
     $('dlgEdit').close(); editing = null;
   } catch (e) { toast('削除できませんでした: ' + e.message, 6000); }
+  b.disabled = false;
+};
+$('eRotate').onclick = async () => {
+  const it = editing, b = $('eRotate'); b.disabled = true;
+  try {
+    const j = await api('photo', { id: it.id });
+    const im = new Image(); im.src = 'data:image/jpeg;base64,' + j.photo; await im.decode();
+    const img = encode(rotated(im, 90));
+    const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
+    it.thumb = img.thumb; it.photoId = k.photoId; persist(); render();
+    if (editing === it) $('ePhoto').src = 'data:image/jpeg;base64,' + img.photo;
+  } catch (e) { toast('回転できませんでした: ' + e.message, 6000); }
   b.disabled = false;
 };
 $('formCfg').onsubmit = e => {
