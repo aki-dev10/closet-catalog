@@ -70,6 +70,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .dlg { padding: 16px; display: grid; gap: 10px; }
 .dlg h2 { margin: 0; font-size: 16px; }
 .dlg .photo { width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg); border-radius: 8px; }
+.rot { display: flex; justify-content: center; gap: 12px; }
+.rot .btn { display: grid; place-items: center; padding: 6px 16px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .f { display: grid; gap: 3px; font-size: 12px; color: var(--sub); min-width: 0; }
 .f input, .f select, .f textarea { border: 1px solid var(--line); background: var(--bg); border-radius: 8px;
@@ -112,6 +114,10 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 <dialog id="dlgEdit">
   <form class="dlg" id="formEdit">
     <img class="photo" id="ePhoto" alt="">
+    <div class="rot">
+      <button type="button" class="btn" id="eRotL" aria-label="左に90度回転" title="左に90度回転"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button type="button" class="btn" id="eRotR" aria-label="右に90度回転" title="右に90度回転"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+    </div>
     <label class="f">名称<input id="eName" maxlength="40"></label>
     <div class="row">
       <label class="f">種類<select id="eType"></select></label>
@@ -134,7 +140,6 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <div class="actions">
       <button type="button" class="btn danger" id="eDelete">完全に削除</button>
       <button type="button" class="btn" id="eDispose">処分済みにする</button>
-      <button type="button" class="btn" id="eRotate">写真を90°回転</button>
       <span class="sp"></span>
       <button type="button" class="btn" id="eCancel">閉じる</button>
       <button type="submit" class="btn primary" id="eSave">保存</button>
@@ -521,18 +526,20 @@ $('eDelete').onclick = async () => {
   } catch (e) { toast('削除できませんでした: ' + e.message, 6000); }
   b.disabled = false;
 };
-$('eRotate').onclick = async () => {
-  const it = editing, b = $('eRotate'); b.disabled = true;
+async function rotatePhoto(deg) {
+  const it = editing; $('eRotL').disabled = $('eRotR').disabled = true;
   try {
     const j = await api('photo', { id: it.id });
     const im = new Image(); im.src = 'data:image/jpeg;base64,' + j.photo; await im.decode();
-    const img = encode(rotated(im, 90));
+    const img = encode(rotated(im, deg));
     const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
     it.thumb = img.thumb; it.photoId = k.photoId; persist(); render();
     if (editing === it) $('ePhoto').src = 'data:image/jpeg;base64,' + img.photo;
   } catch (e) { toast('回転できませんでした: ' + e.message, 6000); }
-  b.disabled = false;
-};
+  $('eRotL').disabled = $('eRotR').disabled = false;
+}
+$('eRotL').onclick = () => rotatePhoto(270);
+$('eRotR').onclick = () => rotatePhoto(90);
 $('formCfg').onsubmit = e => {
   e.preventDefault();
   cfg = { url: $('cUrl').value.trim() || DEFAULT_URL, pass: $('cPass').value, model: $('cModel').value };
