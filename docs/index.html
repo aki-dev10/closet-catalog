@@ -328,7 +328,7 @@ function rank(i) {
   if (i.type === 'スポーツウェア') return /パンツ|ショーツ|ズボン|タイツ|レギンス|スパッツ/.test(i.name) ? 920 : /長袖/.test(i.name) ? 900 : 910;
   if (i.type === 'パンツ') return 300;
   if (i.type === 'ショートパンツ') return 400;
-  const o = ['ジャケット', 'コート・ダウン'].indexOf(i.type);
+  const o = ['コート・ダウン'].indexOf(i.type);   // ジャケットはトップス（長袖）扱い
   if (o >= 0) return 50 + o;
   const t = TOPS.indexOf(i.type);
   if (t >= 0) {
