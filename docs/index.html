@@ -54,7 +54,7 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 @media (min-width: 700px) { #grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
 .tile { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   overflow: hidden; cursor: pointer; padding: 0; text-align: left; display: block; width: 100%; }
-.tile img, .tile .ph { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--line); }
+.tile img, .tile .ph { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; background: var(--line); }
 .tile .cap { padding: 6px 8px 8px; font-size: 12px; }
 .tile .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .tile .sb { color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -95,6 +95,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <select id="fType" aria-label="種類"></select>
     <select id="fSeason" aria-label="季節"></select>
     <select id="fOwner" aria-label="持ち主"></select>
+    <select id="fColor" aria-label="色"></select>
     <select id="fStatus" aria-label="状態"></select>
     <label><input type="checkbox" id="fReview"> 要確認のみ</label>
     <button type="button" id="btnSel">まとめて変更</button>
@@ -125,7 +126,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     </div>
     <div class="f">季節<div class="checks" id="eSeasons"></div></div>
     <div class="row">
-      <label class="f">色<input id="eColor" maxlength="20"></label>
+      <label class="f">色<input id="eColor" maxlength="20" list="dlColor"><datalist id="dlColor"></datalist></label>
       <label class="f">状態<select id="eStatus"></select></label>
     </div>
     <div class="row">
@@ -181,6 +182,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
   <input id="bPlace" list="dlPlace" placeholder="収納場所（変えないなら空欄）">
   <select id="bStatus"></select>
   <button class="btn" id="bAll">表示中をすべて選択</button>
+  <button class="btn" id="bTidy">写真をAIで整える</button>
   <button class="btn primary" id="bApply">適用</button>
 </div>
 
@@ -271,14 +273,17 @@ function buildOptions() {
   opt($('fType'), types, ['', '種類: すべて']);
   opt($('fSeason'), meta.seasons, ['', '季節: すべて']);
   opt($('fOwner'), owners, ['', '持ち主: すべて']);
+  const used = new Set(items.map(i => i.color).filter(Boolean));
+  opt($('fColor'), [...(meta.colors || []).filter(c => used.has(c)), ...[...used].filter(c => !(meta.colors || []).includes(c))], ['', '色: すべて']);
   opt($('fStatus'), [...meta.statuses, ['*', '状態: すべて']], ['', '処分済み以外']);
   if (!buildOptions.done) {
-    for (const k of ['fType', 'fSeason', 'fOwner', 'fStatus']) if (f[k] && [...$(k).options].some(o => o.value === f[k])) $(k).value = f[k];
+    for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fStatus']) if (f[k] && [...$(k).options].some(o => o.value === f[k])) $(k).value = f[k];
     buildOptions.done = true;
   }
   opt($('eType'), types);
   opt($('eStatus'), meta.statuses);
   opt($('bStatus'), meta.statuses, ['', '状態: 変えない']);
+  $('dlColor').replaceChildren(...(meta.colors || []).map(o => new Option(o)));
   $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
   $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
   if (!$('eSeasons').children.length) {
@@ -294,12 +299,26 @@ function seasonLabel(s) {
   return a.length >= meta.seasons.length ? '通年' : a.join('');
 }
 
+const TOPS = ['Tシャツ', 'シャツ', 'ニット', 'パーカー・スウェット', 'ジャケット', 'コート・ダウン'];
+// 並び順: 長袖 → 半袖 → 長ズボン → 半ズボン → スポーツウェア → その他
+function rank(i) {
+  if (i.type === 'スポーツウェア') return 500;
+  if (i.type === 'パンツ') return 300;
+  if (i.type === 'ショートパンツ') return 400;
+  const t = TOPS.indexOf(i.type);
+  if (t >= 0) {
+    const short = /半袖|ノースリーブ|タンク/.test(i.name) || (i.type === 'Tシャツ' && !/長袖/.test(i.name));
+    return (short ? 200 : 100) + t;
+  }
+  const k = meta.types.findIndex(x => x.name === i.type);
+  return 600 + (k < 0 ? 99 : k);
+}
 function visible() {
-  const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, st = $('fStatus').value, rv = $('fReview').checked;
+  const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, st = $('fStatus').value, rv = $('fReview').checked;
   return items.filter(i =>
-    (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) &&
+    (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) && (!c || i.color === c) &&
     (st === '*' || (st ? i.status === st : i.status !== '処分済み')) && (!rv || i.review === '未確認')
-  ).sort((a, b) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
+  ).sort((a, b) => rank(a) - rank(b) || b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
 }
 
 function render() {
@@ -361,9 +380,25 @@ function rotated(src, deg) {
   x.drawImage(src, -src.width / 2, -src.height / 2);
   return c;
 }
+function cropped(src, box) {
+  if (!box) return src;
+  const m = 0.04, w = src.width, h = src.height;
+  const x0 = Math.max(0, box[0] - m) * w, y0 = Math.max(0, box[1] - m) * h;
+  const x1 = Math.min(1, box[2] + m) * w, y1 = Math.min(1, box[3] + m) * h;
+  if ((x1 - x0) * (y1 - y0) > w * h * 0.9) return src;
+  const c = document.createElement('canvas'); c.width = Math.round(x1 - x0); c.height = Math.round(y1 - y0);
+  c.getContext('2d').drawImage(src, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+  return c;
+}
+// 余白カットと回転。何も変わらないときは null
+function tidy(src, rotate, box) {
+  const c = cropped(src, box);
+  if (c === src && !rotate) return null;
+  return rotate ? rotated(c, rotate) : c;
+}
 function encode(src) {
   const photo = draw(src, 1200).toDataURL('image/jpeg', 0.82).split(',')[1];
-  const tc = draw(src, 240, true);
+  const tc = draw(src, 240);
   let q = 0.72, thumb = tc.toDataURL('image/jpeg', q);
   while (thumb.length > 45000 && q > 0.3) { q -= 0.1; thumb = tc.toDataURL('image/jpeg', q); }
   return { photo, thumb };
@@ -380,10 +415,11 @@ async function addFiles(files) {
     try {
       const src = await decode(job.file);
       const j = await api('add', Object.assign(encode(src), { owner: $('fOwner').value, model: cfg.model || 'sonnet' }));
-      if (j.rotate) {
-        job.label = '向きを調整中…'; render();
+      const fixed = tidy(src, j.rotate, j.box);
+      if (fixed) {
+        job.label = '写真を整えています…'; render();
         try {
-          const img = encode(rotated(src, j.rotate));
+          const img = encode(fixed);
           const k = await api('replacePhoto', Object.assign({ id: j.item.id }, img));
           j.item.thumb = img.thumb; j.item.photoId = k.photoId;
         } catch (e) { }
@@ -476,6 +512,25 @@ $('bApply').onclick = async () => {
   } catch (e) { toast('変更できませんでした: ' + e.message, 6000); }
   $('bApply').disabled = false;
 };
+$('bTidy').onclick = async () => {
+  if (!selected.size) { toast('服をタップして選んでください'); return; }
+  const list = items.filter(i => selected.has(i.id)); let done = 0, changed = 0;
+  $('bTidy').disabled = true;
+  for (const it of list) {
+    toast('写真を整えています… ' + (++done) + '/' + list.length, 60000);
+    try {
+      const j = await api('analyze', { id: it.id, model: cfg.model || 'sonnet' });
+      const im = new Image(); im.src = 'data:image/jpeg;base64,' + j.photo; await im.decode();
+      const fixed = tidy(im, j.rotate, j.box);
+      if (!fixed) continue;
+      const img = encode(fixed);
+      const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
+      it.thumb = img.thumb; it.photoId = k.photoId; changed++; persist(); render();
+    } catch (e) { toast('整えられませんでした: ' + e.message, 6000); }
+  }
+  $('bTidy').disabled = false;
+  toast(changed + ' 点の写真を整えました');
+};
 function sumTable(title, list, keyFn) {
   const g = new Map();
   for (const it of list) for (const k of keyFn(it)) {
@@ -503,8 +558,8 @@ $('btnSum').onclick = () => {
 };
 $('sBox').oninput = boxCalc;
 $('sClose').onclick = () => $('dlgSum').close();
-for (const k of ['fType', 'fSeason', 'fOwner', 'fStatus', 'fReview']) $(k).onchange = () => {
-  save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fStatus: $('fStatus').value });
+for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fStatus', 'fReview']) $(k).onchange = () => {
+  save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fColor: $('fColor').value, fStatus: $('fStatus').value });
   render();
 };
 $('eType').onchange = () => {
