@@ -51,6 +51,10 @@ body.selmode main { padding-bottom: 150px; }
 .sum th:first-child, .sum td:first-child { text-align: left; }
 .sum h3 { margin: 8px 0 2px; font-size: 13px; color: var(--sub); }
 .sum .box { font-size: 15px; font-weight: 600; }
+.olist { display: grid; gap: 4px; }
+.orow { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 8px 4px 4px; cursor: pointer; font-size: 13px; }
+.orow > :first-child { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: var(--line); }
+.osub { color: var(--sub); font-size: 12px; white-space: nowrap; }
 main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 #count { color: var(--sub); font-size: 13px; cursor: help; white-space: nowrap; }
 #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
@@ -81,7 +85,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .dlg { padding: 16px; display: grid; gap: 10px; }
 .dlg h2 { margin: 0; font-size: 16px; }
 .dlg .photo { width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg); border-radius: 8px; }
-.rot { display: flex; justify-content: center; gap: 12px; }
+.rot { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; }
 .rot .btn { display: grid; place-items: center; padding: 6px 16px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .f { display: grid; gap: 3px; font-size: 12px; color: var(--sub); min-width: 0; }
@@ -94,7 +98,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 4px; }
 .actions .sp { flex: 1; }
 .note { font-size: 12px; color: var(--sub); }
-#msg { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+#msg { position: fixed; top: auto; right: auto; margin: 0; border: 0; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px;
   max-width: calc(100vw - 32px); z-index: 20; }
 [hidden] { display: none !important; }
@@ -113,6 +117,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <label><input type="checkbox" id="fReview"> 要確認のみ</label>
     <button type="button" id="btnSel">まとめて変更</button>
     <button type="button" id="btnSum">集計</button>
+    <button type="button" id="btnOld">手放す候補</button>
     <span id="count"></span>
     <span id="sync"></span>
     <button type="button" id="btnCfg">設定</button>
@@ -131,6 +136,13 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <div class="rot">
       <button type="button" class="btn" id="eRotL" aria-label="左に90度回転" title="左に90度回転"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
       <button type="button" class="btn" id="eRotR" aria-label="右に90度回転" title="右に90度回転"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+      <button type="button" class="btn" id="eReplace">写真を差し替え</button>
+      <input type="file" id="eFile" accept="image/*" hidden>
+    </div>
+    <div class="rot">
+      <button type="button" class="btn" id="eLeft">← 左へ</button>
+      <span class="note">並び順</span>
+      <button type="button" class="btn" id="eRight">右へ →</button>
     </div>
     <label class="f">名称<input id="eName" maxlength="40"></label>
     <div class="row">
@@ -202,7 +214,17 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
   <button class="btn primary" id="bApply">適用</button>
 </div>
 
-<div id="msg" hidden></div>
+<dialog id="dlgOld">
+  <div class="dlg sum">
+    <h2>手放す候補</h2>
+    <label class="f">購入からの年数<select id="oYears"><option value="3">3年以上</option><option value="5" selected>5年以上</option><option value="7">7年以上</option><option value="10">10年以上</option></select></label>
+    <div id="oldBody"></div>
+    <div class="note">年数で出るのは購入日を入れた服だけです。タップすると編集画面が開きます。</div>
+    <div class="actions"><button type="button" class="btn" id="oClose">閉じる</button></div>
+  </div>
+</dialog>
+
+<div id="msg" popover="manual" hidden></div>
 
 <script>
 'use strict';
@@ -257,8 +279,10 @@ async function api(action, data) {
 
 let msgTimer;
 function toast(t, ms) {
-  $('msg').textContent = t; $('msg').hidden = false;
-  clearTimeout(msgTimer); msgTimer = setTimeout(() => $('msg').hidden = true, ms || 3500);
+  const m = $('msg'); m.textContent = t; m.hidden = false;
+  try { m.hidePopover(); } catch (e) { }
+  try { m.showPopover(); } catch (e) { }   // 開いているダイアログより手前に出す
+  clearTimeout(msgTimer); msgTimer = setTimeout(() => { m.hidden = true; try { m.hidePopover(); } catch (e) { } }, ms || 3500);
 }
 
 async function sync() {
@@ -441,6 +465,15 @@ function tidy(src, rotate, box) {
   if (c === src && !rotate) return null;
   return rotate ? rotated(c, rotate) : c;
 }
+// 加工後の写真が真っ黒になっていないか確かめる（元は暗くないのに結果だけ暗ければ失敗とみなして使わない）
+function lum(src) {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0, 16, 16);
+  const d = x.getImageData(0, 0, 16, 16).data; let s = 0;
+  for (let n = 0; n < d.length; n += 4) s += d[n] + d[n + 1] + d[n + 2];
+  return s / (d.length / 4 * 3);
+}
+function safe(before, after) { return after && lum(after) < 6 && lum(before) > 12 ? null : after; }
 function encode(src) {
   const photo = draw(src, 1200).toDataURL('image/jpeg', 0.82).split(',')[1];
   const tc = draw(src, 240);
@@ -458,9 +491,9 @@ async function addFiles(files) {
   for (const job of jobs) {
     job.label = '登録中…'; render();
     try {
-      const src = await decode(job.file);
+      const src = draw(await decode(job.file), 1600);   // 先に縮小する（大きい写真のまま回転・切り抜きするとスマホで真っ黒になる）
       const j = await api('add', Object.assign(encode(src), { owner: $('fOwner').value, model: cfg.model || 'sonnet' }));
-      const fixed = tidy(src, j.rotate, j.box);
+      const fixed = safe(src, tidy(src, j.rotate, j.box));
       if (fixed) {
         job.label = '写真を整えています…'; render();
         try {
@@ -565,11 +598,7 @@ $('grid').addEventListener('drop', async e => {
   e.preventDefault();
   const a = items.find(i => i.id === dragId), b = items.find(i => i.id === t.dataset.id);
   if (!a || !b || a === b || group(a) !== group(b)) return;
-  const seq = items.filter(i => group(i) === group(a)).sort(cmp).filter(i => i !== a);
-  seq.splice(seq.indexOf(b), 0, a);   // 重ねた服が左、重ねられた服が右
-  const orders = {}; seq.forEach((i, n) => { i.order = n + 1; orders[i.id] = n + 1; });
-  persist(); render();
-  try { await api('reorder', { orders }); } catch (err) { toast('並び順を保存できませんでした: ' + err.message, 6000); }
+  await place(a, b, false);   // 重ねた服が左、重ねられた服が右
 });
 $('btnSel').onclick = () => {
   selMode = !selMode; selected.clear();
@@ -614,7 +643,7 @@ $('bTidy').onclick = async () => {
     try {
       const j = await api('analyze', { id: it.id, model: cfg.model || 'sonnet' });
       const im = new Image(); im.src = 'data:image/jpeg;base64,' + j.photo; await im.decode();
-      const fixed = tidy(im, j.rotate, j.box);
+      const fixed = safe(im, tidy(im, j.rotate, j.box));
       if (!fixed) continue;
       const img = encode(fixed);
       const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
@@ -651,6 +680,30 @@ $('btnSum').onclick = () => {
 };
 $('sBox').oninput = boxCalc;
 $('sClose').onclick = () => $('dlgSum').close();
+// 手放す候補: 「処分候補」にしている服と、購入から年数がたった服
+function oldList() {
+  const y = new Date().getFullYear() - Number($('oYears').value);
+  const live = items.filter(i => i.status !== '処分済み');
+  const sec = (title, list) => {
+    const h = document.createElement('h3'); h.textContent = title + ' ' + list.length + '点';
+    const box = document.createElement('div'); box.className = 'olist';
+    for (const it of list) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'orow'; b.dataset.id = it.id;
+      const im = document.createElement(it.thumb ? 'img' : 'span'); if (it.thumb) { im.src = it.thumb; im.alt = ''; }
+      const t = document.createElement('span'); t.textContent = it.name || '（名称なし）';
+      const u = document.createElement('span'); u.className = 'osub';
+      u.textContent = [it.bought ? String(it.bought).slice(0, 4) + '年' : '', it.price ? '¥' + Number(it.price).toLocaleString('ja-JP') : '', it.type].filter(Boolean).join('・');
+      b.append(im, t, u); box.append(b);
+    }
+    return [h, box];
+  };
+  const old = live.filter(i => i.bought && Number(String(i.bought).slice(0, 4)) <= y && i.status !== '処分候補').sort((a, b) => String(a.bought).localeCompare(String(b.bought)));
+  $('oldBody').replaceChildren(...sec('処分候補にしている服', live.filter(i => i.status === '処分候補')), ...sec('購入から' + $('oYears').value + '年以上', old));
+}
+$('btnOld').onclick = () => { oldList(); $('dlgOld').showModal(); };
+$('oYears').onchange = oldList;
+$('oClose').onclick = () => $('dlgOld').close();
+$('oldBody').onclick = e => { const b = e.target.closest('.orow'); if (!b) return; $('dlgOld').close(); openEdit(b.dataset.id); };
 $('fQ').oninput = () => render();
 for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fPlace', 'fStatus', 'fReview']) $(k).onchange = () => {
   save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fColor: $('fColor').value, fPlace: $('fPlace').value, fStatus: $('fStatus').value });
@@ -675,12 +728,47 @@ $('eDelete').onclick = async () => {
   } catch (e) { toast('削除できませんでした: ' + e.message, 6000); }
   b.disabled = false;
 };
+$('eReplace').onclick = () => $('eFile').click();
+$('eFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; const it = editing; if (!f || !it) return;
+  $('eReplace').disabled = true;
+  try {
+    const img = encode(draw(await decode(f), 1600));
+    const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
+    it.thumb = img.thumb; it.photoId = k.photoId; persist(); render();
+    if (editing === it) $('ePhoto').src = 'data:image/jpeg;base64,' + img.photo;
+    toast('写真を差し替えました');
+  } catch (err) { toast('差し替えできませんでした: ' + err.message, 6000); }
+  $('eReplace').disabled = false;
+};
+// a を b の左（after なら右）に入れて、その区切りの並び順を保存する
+async function place(a, b, after) {
+  const seq = items.filter(i => group(i) === group(a)).sort(cmp).filter(i => i !== a);
+  seq.splice(seq.indexOf(b) + (after ? 1 : 0), 0, a);
+  const orders = {}; seq.forEach((i, n) => { i.order = n + 1; orders[i.id] = n + 1; });
+  persist(); render();
+  try { await api('reorder', { orders }); } catch (err) { toast('並び順を保存できませんでした: ' + err.message, 6000); }
+}
+// 編集画面の「左へ」「右へ」（スマホなどドラッグできない端末用）
+async function nudge(dir) {
+  const it = editing; if (!it) return;
+  const vis = visible().filter(i => group(i) === group(it)), k = vis.indexOf(it);
+  if (k < 0) return;
+  const nb = vis[k + dir];
+  if (!nb) { toast(dir < 0 ? 'すでに一番左です' : 'すでに一番右です'); return; }
+  await place(it, nb, dir > 0);
+  toast(dir < 0 ? '左へ移動しました' : '右へ移動しました', 1500);
+}
+$('eLeft').onclick = () => nudge(-1);
+$('eRight').onclick = () => nudge(1);
 async function rotatePhoto(deg) {
   const it = editing; $('eRotL').disabled = $('eRotR').disabled = true;
   try {
     const j = await api('photo', { id: it.id });
     const im = new Image(); im.src = 'data:image/jpeg;base64,' + j.photo; await im.decode();
-    const img = encode(rotated(im, deg));
+    const rot = safe(im, rotated(im, deg));
+    if (!rot) throw new Error('写真を加工できませんでした');
+    const img = encode(rot);
     const k = await api('replacePhoto', Object.assign({ id: it.id }, img));
     it.thumb = img.thumb; it.photoId = k.photoId; persist(); render();
     if (editing === it) $('ePhoto').src = 'data:image/jpeg;base64,' + img.photo;
