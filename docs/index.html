@@ -58,6 +58,9 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 .tile .cap { padding: 6px 8px 8px; font-size: 12px; }
 .tile .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .tile .sb { color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ht { background: linear-gradient(90deg, #e6007e, #e60012 55%, #f08300); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; letter-spacing: .02em; }
+.hb { position: absolute; top: 6px; right: 6px; background: #fff; border-radius: 4px; padding: 1px 5px; font-size: 9px; line-height: 1.4; }
+.checks label:has(#eHeat:checked) { background: #fff; border-color: #e60012; box-shadow: 0 0 0 1px #e60012; }
 .badge { position: absolute; top: 6px; left: 6px; background: var(--warn); color: #fff; font-size: 11px;
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
@@ -125,6 +128,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
       <label class="f">持ち主<input id="eOwner" list="dlOwner"><datalist id="dlOwner"></datalist></label>
     </div>
     <div class="f">季節<div class="checks" id="eSeasons"></div></div>
+    <div class="f">タグ<div class="checks"><label><input type="checkbox" id="eHeat"><span class="ht">HEATTECH</span></label></div></div>
     <div class="row">
       <label class="f">色<input id="eColor" maxlength="20" list="dlColor"><datalist id="dlColor"></datalist></label>
       <label class="f">状態<select id="eStatus"></select></label>
@@ -294,6 +298,7 @@ function buildOptions() {
   }
 }
 
+function hasTag(it, t) { return (it.tags || '').split(',').includes(t); }
 function seasonLabel(s) {
   const a = (s || '').split(',').filter(Boolean);
   return a.length >= meta.seasons.length ? '通年' : a.join('');
@@ -340,6 +345,7 @@ function render() {
     sb.textContent = [it.type, seasonLabel(it.seasons), it.status !== '使用中' ? it.status : ''].filter(Boolean).join('・');
     cap.append(nm, sb); b.append(img, cap);
     if (it.review === '未確認') { const g = document.createElement('span'); g.className = 'badge'; g.textContent = '要確認'; b.append(g); }
+    if (hasTag(it, 'HEATTECH')) { const g = document.createElement('span'); g.className = 'hb'; const x = document.createElement('span'); x.className = 'ht'; x.textContent = 'HEATTECH'; g.append(x); b.append(g); }
     nodes.push(b);
   }
   $('grid').replaceChildren(...nodes);
@@ -442,7 +448,7 @@ function openEdit(id) {
   $('ePhoto').src = it.thumb || '';
   $('eName').value = it.name; $('eType').value = it.type; $('eOwner').value = it.owner;
   $('eColor').value = it.color; $('eStatus').value = it.status; $('ePlace').value = it.place;
-  $('eVolume').value = it.volume; $('eMemo').value = it.memo; $('ePrice').value = it.price || '';
+  $('eVolume').value = it.volume; $('eMemo').value = it.memo; $('ePrice').value = it.price || ''; $('eHeat').checked = hasTag(it, 'HEATTECH');
   const ss = (it.seasons || '').split(',');
   for (const c of $('eSeasons').querySelectorAll('input')) c.checked = ss.includes(c.value);
   $('eInfo').textContent = (it.review === '未確認' ? 'AIの提案です。確認して保存してください。　' : '') + '登録: ' + it.created;
@@ -460,6 +466,7 @@ async function saveEdit(extra) {
     name: $('eName').value.trim(), type: $('eType').value, owner: $('eOwner').value.trim(),
     color: $('eColor').value.trim(), status: $('eStatus').value, place: $('ePlace').value.trim(),
     volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(), price: $('ePrice').value.trim(),
+    tags: [...(it.tags || '').split(',').filter(t => t && t !== 'HEATTECH'), ...($('eHeat').checked ? ['HEATTECH'] : [])].join(','),
     seasons: [...$('eSeasons').querySelectorAll('input:checked')].map(c => c.value).join(','),
     review: '済'
   }, extra);
