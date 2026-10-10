@@ -37,6 +37,8 @@ h1 { font-size: 18px; margin: 0; flex: 1; }
 .filters button { flex: none; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
 .filters button.on, .filters button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tile.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
+.tile.drag { opacity: .4; }
+.tile.over { outline: 3px dashed var(--accent); outline-offset: -3px; }
 @media (max-width: 699px) { .filters { flex-wrap: nowrap; overflow-x: auto; } .filters > * { flex: none; } #btnAdd { order: -1; } #sync { margin-left: 0; } }
 body.selmode main { padding-bottom: 150px; }
 #bulk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--card); border-top: 1px solid var(--line);
@@ -327,12 +329,20 @@ function rank(i) {
 // 見出しの区切り
 const GROUPS = ['トップス', 'ボトムス', 'その他', 'スポーツウェア'];
 function group(i) { const r = rank(i); return r < 300 ? 0 : r < 600 ? 1 : r < 900 ? 2 : 3; }
+// 並び: グループ → 手動の並び順（ドラッグで決めたもの） → 自動の順
+function cmp(a, b) {
+  const ga = group(a), gb = group(b); if (ga !== gb) return ga - gb;
+  const oa = Number(a.order) || 0, ob = Number(b.order) || 0;
+  if (oa && ob) return oa - ob;
+  if (oa || ob) return oa ? -1 : 1;
+  return rank(a) - rank(b) || b.created.localeCompare(a.created) || b.id.localeCompare(a.id);
+}
 function visible() {
   const t = $('fType').value, s = $('fSeason').value, o = $('fOwner').value, c = $('fColor').value, st = $('fStatus').value, rv = $('fReview').checked;
   return items.filter(i =>
     (!t || i.type === t) && (!s || (i.seasons || '').split(',').includes(s)) && (!o || i.owner === o) && (!c || i.color === c) &&
     (st === '*' || (st ? i.status === st : i.status !== '処分済み')) && (!rv || i.review === '未確認')
-  ).sort((a, b) => rank(a) - rank(b) || b.created.localeCompare(a.created) || b.id.localeCompare(a.id));
+  ).sort(cmp);
 }
 
 function render() {
@@ -349,7 +359,7 @@ function render() {
     lastGroup = grp;
     const b = document.createElement('button');
     b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
-    b.dataset.id = it.id;
+    b.dataset.id = it.id; b.draggable = true;
     const img = document.createElement(it.thumb ? 'img' : 'div');
     if (it.thumb) { img.src = it.thumb; img.alt = it.name; img.loading = 'lazy'; } else img.className = 'ph';
     const cap = document.createElement('div'); cap.className = 'cap';
@@ -511,6 +521,32 @@ $('grid').onclick = e => {
   selected.has(t.dataset.id) ? selected.delete(t.dataset.id) : selected.add(t.dataset.id);
   render();
 };
+let dragId = null;
+$('grid').addEventListener('dragstart', e => {
+  const t = e.target.closest('.tile[data-id]'); if (!t || selMode) { e.preventDefault(); return; }
+  dragId = t.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); t.classList.add('drag');
+});
+$('grid').addEventListener('dragend', () => { dragId = null; for (const x of document.querySelectorAll('.tile.drag, .tile.over')) x.classList.remove('drag', 'over'); });
+$('grid').addEventListener('dragover', e => {
+  const t = e.target.closest('.tile[data-id]'); if (!t || !dragId || t.dataset.id === dragId) return;
+  const a = items.find(i => i.id === dragId), b = items.find(i => i.id === t.dataset.id);
+  if (!a || !b || group(a) !== group(b)) return;
+  e.preventDefault();
+  for (const x of document.querySelectorAll('.tile.over')) if (x !== t) x.classList.remove('over');
+  t.classList.add('over');
+});
+$('grid').addEventListener('drop', async e => {
+  const t = e.target.closest('.tile[data-id]'); if (!t || !dragId) return;
+  e.preventDefault();
+  const a = items.find(i => i.id === dragId), b = items.find(i => i.id === t.dataset.id);
+  if (!a || !b || a === b || group(a) !== group(b)) return;
+  const r = t.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
+  const seq = items.filter(i => group(i) === group(a)).sort(cmp).filter(i => i !== a);
+  seq.splice(seq.indexOf(b) + (after ? 1 : 0), 0, a);
+  const orders = {}; seq.forEach((i, n) => { i.order = n + 1; orders[i.id] = n + 1; });
+  persist(); render();
+  try { await api('reorder', { orders }); } catch (err) { toast('並び順を保存できませんでした: ' + err.message, 6000); }
+});
 $('btnSel').onclick = () => {
   selMode = !selMode; selected.clear();
   $('btnSel').textContent = selMode ? '変更を終了' : 'まとめて変更'; $('btnSel').classList.toggle('on', selMode);
