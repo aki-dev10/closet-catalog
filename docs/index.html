@@ -329,8 +329,8 @@ function rank(i) {
   return 600 + (k < 0 ? 99 : k);
 }
 // 見出しの区切り
-const GROUPS = ['トップス', 'ボトムス', 'その他', 'スポーツウェア'];
-function group(i) { const r = rank(i); return r < 300 ? 0 : r < 600 ? 1 : r < 900 ? 2 : 3; }
+const GROUPS = ['トップス（長袖）', 'トップス（半袖）', 'ボトムス', 'その他', 'スポーツウェア'];
+function group(i) { const r = rank(i); return r < 200 ? 0 : r < 300 ? 1 : r < 600 ? 2 : r < 900 ? 3 : 4; }
 // 並び: グループ → 手動の並び順（ドラッグで決めたもの） → 自動の順
 function cmp(a, b) {
   const ga = group(a), gb = group(b); if (ga !== gb) return ga - gb;
