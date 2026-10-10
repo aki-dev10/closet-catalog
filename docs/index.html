@@ -25,15 +25,29 @@ header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bot
   padding: calc(8px + env(safe-area-inset-top)) 16px 8px; }
 .bar { display: flex; align-items: center; gap: 8px; }
 h1 { font-size: 18px; margin: 0; flex: 1; }
-#sync { font-size: 12px; color: var(--sub); }
+#sync { font-size: 12px; color: var(--sub); margin-left: auto; }
 .btn { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn.danger { color: var(--danger); }
 .btn:disabled { opacity: .5; }
-.filters { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; padding-bottom: 2px; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .filters select, .filters label { flex: none; border: 1px solid var(--line); background: var(--card);
   border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .filters label { display: flex; align-items: center; gap: 4px; }
+.filters button { flex: none; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.filters button.on, .filters button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tile.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
+@media (max-width: 699px) { .filters { flex-wrap: nowrap; overflow-x: auto; } .filters > * { flex: none; } #btnAdd { order: -1; } #sync { margin-left: 0; } }
+body.selmode main { padding-bottom: 150px; }
+#bulk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--card); border-top: 1px solid var(--line);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#bulk input, #bulk select { flex: 1; min-width: 130px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 8px; font-size: 16px; }
+#bulkN { font-size: 13px; color: var(--sub); width: 100%; }
+.sum table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sum th, .sum td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+.sum th:first-child, .sum td:first-child { text-align: left; }
+.sum h3 { margin: 8px 0 2px; font-size: 13px; color: var(--sub); }
+.sum .box { font-size: 15px; font-weight: 600; }
 main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 #count { color: var(--sub); font-size: 13px; margin-bottom: 8px; }
 #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
@@ -75,19 +89,18 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 </head>
 <body>
 <header>
-  <div class="bar">
-    <h1>服カタログ</h1>
-    <span id="sync"></span>
-    <button class="btn" id="btnCfg" aria-label="設定">設定</button>
-    <button class="btn primary" id="btnAdd">＋ 服を追加</button>
-    <input type="file" id="file" accept="image/*" multiple hidden>
-  </div>
   <div class="filters">
     <select id="fType" aria-label="種類"></select>
     <select id="fSeason" aria-label="季節"></select>
     <select id="fOwner" aria-label="持ち主"></select>
     <select id="fStatus" aria-label="状態"></select>
     <label><input type="checkbox" id="fReview"> 要確認のみ</label>
+    <button type="button" id="btnSel">まとめて変更</button>
+    <button type="button" id="btnSum">集計</button>
+    <span id="sync"></span>
+    <button type="button" id="btnCfg">設定</button>
+    <button type="button" class="primary" id="btnAdd">＋ 服を追加</button>
+    <input type="file" id="file" accept="image/*" multiple hidden>
   </div>
 </header>
 <main>
@@ -113,7 +126,10 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
       <label class="f">収納場所<input id="ePlace" list="dlPlace" placeholder="例: クローゼット、BOX-1"><datalist id="dlPlace"></datalist></label>
       <label class="f">かさ（L）<input id="eVolume" type="number" min="0" step="0.1" inputmode="decimal"></label>
     </div>
-    <label class="f">メモ<textarea id="eMemo" rows="2"></textarea></label>
+    <div class="row">
+      <label class="f">購入価格（円）<input id="ePrice" type="number" min="0" step="1" inputmode="numeric"></label>
+      <label class="f">メモ<input id="eMemo"></label>
+    </div>
     <div class="note" id="eInfo"></div>
     <div class="actions">
       <button type="button" class="btn danger" id="eDelete">完全に削除</button>
@@ -141,12 +157,33 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
   </form>
 </dialog>
 
+<dialog id="dlgSum">
+  <div class="dlg sum">
+    <h2>集計</h2>
+    <div class="note">いま一覧に表示している服が対象です。季節や状態で絞り込んでから開くと、その分だけ計算します。</div>
+    <div id="sumBody"></div>
+    <h3>BOXの目安</h3>
+    <label class="f">BOX 1個の容量（L）<input id="sBox" type="number" min="1" step="1" inputmode="numeric"></label>
+    <div class="box" id="sumBox"></div>
+    <div class="note">容量の8割まで詰める想定の概算です。</div>
+    <div class="actions"><button type="button" class="btn" id="sClose">閉じる</button></div>
+  </div>
+</dialog>
+
+<div id="bulk" hidden>
+  <div id="bulkN"></div>
+  <input id="bPlace" list="dlPlace" placeholder="収納場所（変えないなら空欄）">
+  <select id="bStatus"></select>
+  <button class="btn" id="bAll">表示中をすべて選択</button>
+  <button class="btn primary" id="bApply">適用</button>
+</div>
+
 <div id="msg" hidden></div>
 
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
-const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter';
+const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter', LS_BOX = 'closet.box';
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxD0iBAGK9b_sbjS_Iyd4sjf1DcdiiWK0wrf61wtsIHMClc-EpcaMVWtCiOw3xdD6Zs/exec';
 let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
 if (!cfg.url) cfg.url = DEFAULT_URL;
@@ -154,6 +191,8 @@ let items = [];
 let meta = { types: [], seasons: ['春', '夏', '秋', '冬'], statuses: ['使用中', '保管中', '処分候補', '処分済み'], owners: [] };
 let pending = [];      // 登録中の仮タイル
 let editing = null;
+let selMode = false;
+const selected = new Set();
 
 function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -233,6 +272,7 @@ function buildOptions() {
   }
   opt($('eType'), types);
   opt($('eStatus'), meta.statuses);
+  opt($('bStatus'), meta.statuses, ['', '状態: 変えない']);
   $('dlOwner').replaceChildren(...owners.map(o => new Option(o)));
   $('dlPlace').replaceChildren(...[...new Set(items.map(i => i.place).filter(Boolean))].map(o => new Option(o)));
   if (!$('eSeasons').children.length) {
@@ -265,7 +305,7 @@ function render() {
   });
   for (const it of list) {
     const b = document.createElement('button');
-    b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '');
+    b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '');
     b.dataset.id = it.id;
     const img = document.createElement(it.thumb ? 'img' : 'div');
     if (it.thumb) { img.src = it.thumb; img.alt = it.name; img.loading = 'lazy'; } else img.className = 'ph';
@@ -279,7 +319,10 @@ function render() {
   }
   $('grid').replaceChildren(...nodes);
   const vol = list.reduce((a, i) => a + (Number(i.volume) || 0), 0);
-  $('count').textContent = list.length + ' 点' + (list.length ? '（かさ 約 ' + Math.round(vol) + ' L）' : '');
+  const yen = list.reduce((a, i) => a + (Number(i.price) || 0), 0);
+  $('count').textContent = list.length + ' 点' + (list.length ? '（かさ 約 ' + Math.round(vol) + ' L' + (yen ? '・購入価格 計 ¥' + yen.toLocaleString('ja-JP') : '') + '）' : '');
+  $('bulk').hidden = !selMode; document.body.classList.toggle('selmode', selMode);
+  $('bulkN').textContent = selected.size + ' 点を選択中。タップで選択／解除';
   $('empty').hidden = items.length > 0 || pending.length > 0 || !cfg.url;
 }
 
@@ -342,7 +385,7 @@ function openEdit(id) {
   $('ePhoto').src = it.thumb || '';
   $('eName').value = it.name; $('eType').value = it.type; $('eOwner').value = it.owner;
   $('eColor').value = it.color; $('eStatus').value = it.status; $('ePlace').value = it.place;
-  $('eVolume').value = it.volume; $('eMemo').value = it.memo;
+  $('eVolume').value = it.volume; $('eMemo').value = it.memo; $('ePrice').value = it.price || '';
   const ss = (it.seasons || '').split(',');
   for (const c of $('eSeasons').querySelectorAll('input')) c.checked = ss.includes(c.value);
   $('eInfo').textContent = (it.review === '未確認' ? 'AIの提案です。確認して保存してください。　' : '') + '登録: ' + it.created;
@@ -359,7 +402,7 @@ async function saveEdit(extra) {
   const fields = Object.assign({
     name: $('eName').value.trim(), type: $('eType').value, owner: $('eOwner').value.trim(),
     color: $('eColor').value.trim(), status: $('eStatus').value, place: $('ePlace').value.trim(),
-    volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(),
+    volume: Number($('eVolume').value) || 0, memo: $('eMemo').value.trim(), price: $('ePrice').value.trim(),
     seasons: [...$('eSeasons').querySelectorAll('input:checked')].map(c => c.value).join(','),
     review: '済'
   }, extra);
@@ -383,7 +426,62 @@ function openCfg() {
 $('btnAdd').onclick = () => cfg.url ? $('file').click() : openCfg();
 $('file').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; addFiles(fs); };
 $('btnCfg').onclick = openCfg;
-$('grid').onclick = e => { const t = e.target.closest('.tile[data-id]'); if (t) openEdit(t.dataset.id); };
+$('grid').onclick = e => {
+  const t = e.target.closest('.tile[data-id]'); if (!t) return;
+  if (!selMode) { openEdit(t.dataset.id); return; }
+  selected.has(t.dataset.id) ? selected.delete(t.dataset.id) : selected.add(t.dataset.id);
+  render();
+};
+$('btnSel').onclick = () => {
+  selMode = !selMode; selected.clear();
+  $('btnSel').textContent = selMode ? '変更を終了' : 'まとめて変更'; $('btnSel').classList.toggle('on', selMode);
+  render();
+};
+$('bAll').onclick = () => { for (const i of visible()) selected.add(i.id); render(); };
+$('bApply').onclick = async () => {
+  const fields = {};
+  if ($('bPlace').value.trim()) fields.place = $('bPlace').value.trim();
+  if ($('bStatus').value) fields.status = $('bStatus').value;
+  if (!selected.size) { toast('服をタップして選んでください'); return; }
+  if (!Object.keys(fields).length) { toast('収納場所か状態を指定してください'); return; }
+  $('bApply').disabled = true;
+  try {
+    const ids = [...selected];
+    await api('bulk', { ids, fields });
+    for (const it of items) if (selected.has(it.id)) Object.assign(it, fields);
+    selected.clear(); $('bPlace').value = ''; $('bStatus').value = '';
+    persist(); buildOptions(); render();
+    toast(ids.length + ' 点を変更しました');
+  } catch (e) { toast('変更できませんでした: ' + e.message, 6000); }
+  $('bApply').disabled = false;
+};
+function sumTable(title, list, keyFn) {
+  const g = new Map();
+  for (const it of list) for (const k of keyFn(it)) {
+    const r = g.get(k) || { n: 0, v: 0 }; r.n++; r.v += Number(it.volume) || 0; g.set(k, r);
+  }
+  const h = document.createElement('h3'); h.textContent = title + '別';
+  const tb = document.createElement('table');
+  const row = (cells, tag) => { const tr = document.createElement('tr'); for (const c of cells) { const d = document.createElement(tag); d.textContent = c; tr.append(d); } return tr; };
+  tb.append(row([title, '点数', 'かさ(L)'], 'th'), ...[...g].sort((a, b) => b[1].v - a[1].v).map(([k, r]) => row([k, r.n, Math.round(r.v * 10) / 10], 'td')));
+  return [h, tb];
+}
+function boxCalc() {
+  const cap = Number($('sBox').value) || 0; save(LS_BOX, cap);
+  const vol = visible().reduce((a, i) => a + (Number(i.volume) || 0), 0);
+  $('sumBox').textContent = cap > 0 ? '合計 約 ' + Math.round(vol) + ' L → 必要なBOXは 約 ' + Math.ceil(vol / (cap * 0.8)) + ' 個' : '';
+}
+$('btnSum').onclick = () => {
+  const list = visible();
+  $('sumBody').replaceChildren(
+    ...sumTable('種類', list, i => [i.type || '（未設定）']),
+    ...sumTable('季節', list, i => { const a = (i.seasons || '').split(',').filter(Boolean); return a.length ? a : ['（未設定）']; }),
+    ...sumTable('収納場所', list, i => [i.place || '（未設定）']));
+  $('sBox').value = load(LS_BOX) || 50; boxCalc();
+  $('dlgSum').showModal();
+};
+$('sBox').oninput = boxCalc;
+$('sClose').onclick = () => $('dlgSum').close();
 for (const k of ['fType', 'fSeason', 'fOwner', 'fStatus', 'fReview']) $(k).onchange = () => {
   save(LS_FILTER, { fType: $('fType').value, fSeason: $('fSeason').value, fOwner: $('fOwner').value, fStatus: $('fStatus').value });
   render();
