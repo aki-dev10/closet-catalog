@@ -553,9 +553,8 @@ $('grid').addEventListener('drop', async e => {
   e.preventDefault();
   const a = items.find(i => i.id === dragId), b = items.find(i => i.id === t.dataset.id);
   if (!a || !b || a === b || group(a) !== group(b)) return;
-  const r = t.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
   const seq = items.filter(i => group(i) === group(a)).sort(cmp).filter(i => i !== a);
-  seq.splice(seq.indexOf(b) + (after ? 1 : 0), 0, a);
+  seq.splice(seq.indexOf(b), 0, a);   // 重ねた服が左、重ねられた服が右
   const orders = {}; seq.forEach((i, n) => { i.order = n + 1; orders[i.id] = n + 1; });
   persist(); render();
   try { await api('reorder', { orders }); } catch (err) { toast('並び順を保存できませんでした: ' + err.message, 6000); }
