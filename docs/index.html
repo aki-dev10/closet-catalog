@@ -64,6 +64,8 @@ main { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
 .badge { position: absolute; top: 6px; left: 6px; background: var(--warn); color: #fff; font-size: 11px;
   border-radius: 6px; padding: 1px 6px; }
 .tile.gone img { opacity: .4; }
+.tile.sport .cap { background: #e3f0fc; }
+@media (prefers-color-scheme: dark) { .tile.sport .cap { background: #1d2f42; } }
 .tile.busy { cursor: default; }
 .tile.busy .ph { display: grid; place-items: center; color: var(--sub); font-size: 12px; }
 .empty { color: var(--sub); text-align: center; padding: 48px 0; }
@@ -335,7 +337,7 @@ function render() {
   });
   for (const it of list) {
     const b = document.createElement('button');
-    b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '');
+    b.className = 'tile' + (it.status === '処分済み' ? ' gone' : '') + (selected.has(it.id) ? ' sel' : '') + (it.type === 'スポーツウェア' ? ' sport' : '');
     b.dataset.id = it.id;
     const img = document.createElement(it.thumb ? 'img' : 'div');
     if (it.thumb) { img.src = it.thumb; img.alt = it.name; img.loading = 'lazy'; } else img.className = 'ph';
