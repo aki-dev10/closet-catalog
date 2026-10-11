@@ -25,7 +25,8 @@ header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bot
   padding: calc(8px + env(safe-area-inset-top)) 16px 8px; }
 .bar { display: flex; align-items: center; gap: 8px; }
 h1 { font-size: 18px; margin: 0; flex: 1; }
-#sync { font-size: 12px; color: var(--sub); margin-left: auto; }
+#sync { font-size: 12px; color: var(--sub); margin-left: auto; cursor: pointer; }
+.filters #btnReset { background: var(--warn); border-color: var(--warn); color: #fff; font-weight: 600; }
 .btn { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn.danger { color: var(--danger); }
@@ -105,6 +106,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 #msg { position: fixed; top: auto; right: auto; margin: 0; border: 0; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px;
   max-width: calc(100vw - 32px); z-index: 20; }
+/* 最新データを取れていない・エラーが起きた、を画面の上にはっきり出す帯 */
+#warn { background: var(--warn); color: #fff; font-size: 13px; padding: 8px 16px; cursor: pointer; }
 [hidden] { display: none !important; }
 </style>
 </head>
@@ -122,12 +125,14 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
     <button type="button" id="btnSel">まとめて変更</button>
     <button type="button" id="btnSum">集計</button>
     <span id="count"></span>
+    <button type="button" id="btnReset" hidden>絞り込みを解除</button>
     <span id="sync"></span>
     <button type="button" id="btnCfg">設定</button>
     <button type="button" class="primary" id="btnAdd">＋ 服を追加</button>
     <input type="file" id="file" accept="image/*" multiple hidden>
   </div>
 </header>
+<div id="warn" hidden></div>
 <main>
   <div id="grid"></div>
   <div class="empty" id="empty" hidden>まだ登録がありません。「＋ 服を追加」から写真を選んでください。</div>
@@ -182,6 +187,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
   <form class="dlg" id="formCfg">
     <h2>接続の設定</h2>
     <div class="note">合言葉は、この端末で最初に1回だけ入力します。</div>
+    <div class="note" id="cBuild"></div>
     <label class="f">データのURL（通常は変更不要）<input id="cUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
     <label class="f">合言葉<input id="cPass" type="password" required autocomplete="current-password"></label>
     <label class="f">AIのモデル<select id="cModel"><option value="sonnet">Sonnet（高精度）</option><option value="haiku">Haiku（速い・安い）</option></select></label>
@@ -224,6 +230,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 const $ = id => document.getElementById(id);
 // 収納場所の選択肢 [名前, 補足]
 const PLACES = [['WICのBOX', 'オフシーズン'], ['WICのハンガー', 'オフシーズン'], ['玄関のハンガー', '外出時・アウター'], ['2Fのハンガー', 'よく使う'], ['2Fの棚', 'よく使う']];
+// この版を作った日時。公開するたびに書き換える（設定画面に表示。端末ごとに古い版が残っていないかの確認にも使う）
+const BUILD = '2026/10/11 11:10';
+let lastSync = '', newer = false;
 const LS_CFG = 'closet.cfg', LS_FILTER = 'closet.filter', LS_BOX = 'closet.box';
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxD0iBAGK9b_sbjS_Iyd4sjf1DcdiiWK0wrf61wtsIHMClc-EpcaMVWtCiOw3xdD6Zs/exec';
 let cfg = load(LS_CFG) || { url: '', pass: '', model: 'sonnet' };
@@ -278,6 +287,22 @@ function toast(t, ms) {
   clearTimeout(msgTimer); msgTimer = setTimeout(() => { m.hidden = true; try { m.hidePopover(); } catch (e) { } }, ms || 3500);
 }
 
+// 公開中のページのほうが新しければ知らせる（ホーム画面から開いたままだと古い版が残るため）
+async function checkBuild() {
+  try {
+    const t = await fetch(location.pathname + '?t=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
+    const m = t.match(/const BUILD = '([^']+)'/);
+    if (m && m[1] !== BUILD) { newer = true; $('sync').textContent = '新しい版あり（押すと更新）'; }
+  } catch (e) { }
+}
+// 絞り込み・検索のどれかが効いているか
+function filtering() {
+  return ['fType', 'fSeason', 'fOwner', 'fColor', 'fPlace', 'fStatus'].some(k => $(k).value) || $('fReview').checked || $('fQ').value.trim() !== '';
+}
+// 画面上部の帯にお知らせを出す。kind: 'sync'=押すと再試行 / 'error'=押すと再読み込み
+function warn(kind, text) { const w = $('warn'); w.dataset.kind = kind; w.textContent = text; w.hidden = false; }
+window.addEventListener('error', e => warn('error', '画面でエラーが起きました: ' + e.message + '（版 ' + BUILD + '）。この文をそのまま伝えてください。押すと読み込み直します。'));
+window.addEventListener('unhandledrejection', e => warn('error', '画面でエラーが起きました: ' + String(e.reason && e.reason.message || e.reason) + '（版 ' + BUILD + '）。この文をそのまま伝えてください。押すと読み込み直します。'));
 async function sync() {
   if (!cfg.url) return;
   $('sync').textContent = '更新中…';
@@ -287,10 +312,12 @@ async function sync() {
     items = j.items.map(i => i.thumb ? i : Object.assign(i, { thumb: thumbs.get(i.photoId) || '' }));
     meta = j.meta;
     persist(); buildOptions(); render();
-    $('sync').textContent = '';
+    $('sync').textContent = ''; if ($('warn').dataset.kind === 'sync') $('warn').hidden = true;
+    lastSync = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    checkBuild();
   } catch (e) {
-    $('sync').textContent = '未更新';
-    toast('更新できませんでした: ' + e.message, 6000);
+    $('sync').textContent = '未更新（押すと再試行）';
+    warn('sync', '最新のデータを取得できていません（' + e.message + '）。表示は前回のままです。ここを押すと再試行します。');
     if (e.message === '合言葉が違います') openCfg();
   }
 }
@@ -418,6 +445,7 @@ function render() {
   const vol = list.reduce((a, i) => a + (Number(i.volume) || 0), 0);
   const yen = list.reduce((a, i) => a + (Number(i.price) || 0), 0);
   $('count').textContent = list.length + ' 点' + (list.length ? ' ⓘ' : '');
+  $('btnReset').hidden = !filtering();
   $('count').title = list.length ? 'かさ 約 ' + Math.round(vol) + ' L' + (yen ? '・購入価格 計 ¥' + yen.toLocaleString('ja-JP') : '') : '';
   $('bulk').hidden = !selMode; document.body.classList.toggle('selmode', selMode);
   $('bulkN').textContent = selected.size + ' 点を選択中。タップで選択／解除';
@@ -491,7 +519,7 @@ async function addFiles(files) {
   if (!cfg.url) { openCfg(); return; }
   const jobs = files.map((f, n) => ({ file: f, label: '待機中 ' + (n + 1) + '/' + files.length }));
   pending.unshift(...jobs); render();
-  let ok = 0, aiErr = '';
+  let ok = 0, aiErr = ''; const added = [];
   for (const job of jobs) {
     job.label = '登録中…'; render();
     try {
@@ -506,7 +534,7 @@ async function addFiles(files) {
           j.item.thumb = img.thumb; j.item.photoId = k.photoId;
         } catch (e) { }
       }
-      items.push(j.item); ok++;
+      items.push(j.item); added.push(j.item); ok++;
       if (j.aiError) aiErr = j.aiError;
     } catch (e) {
       toast('登録できませんでした: ' + e.message, 6000);
@@ -514,7 +542,9 @@ async function addFiles(files) {
     pending.splice(pending.indexOf(job), 1);
     persist(); buildOptions(); render();
   }
-  if (ok) toast(aiErr ? ok + ' 点を登録しました（AI提案なし: ' + aiErr + '）' : ok + ' 点を登録しました。「要確認」をタップして内容を確認してください', 6000);
+  const vis = shown(), hid = added.filter(i => !vis.includes(i)).length;
+  const tail = hid ? '（うち ' + hid + ' 点は、いまの絞り込みや非表示の見出しのため一覧に出ていません）' : '';
+  if (ok) toast((aiErr ? ok + ' 点を登録しました（AI提案なし: ' + aiErr + '）' : ok + ' 点を登録しました。「要確認」をタップして内容を確認してください') + tail, hid ? 9000 : 6000);
 }
 
 // ---------- 編集 ----------
@@ -569,6 +599,7 @@ async function saveEdit(extra) {
 // ---------- 設定 ----------
 function openCfg() {
   $('cUrl').value = cfg.url; $('cPass').value = cfg.pass; $('cModel').value = cfg.model || 'sonnet';
+  $('cBuild').textContent = 'この版の作成日時: ' + BUILD + (lastSync ? '　／　データの最終更新: ' + lastSync : '　／　データ: まだ更新できていません');
   $('dlgCfg').showModal();
 }
 
@@ -577,6 +608,13 @@ $('btnAdd').onclick = () => cfg.url ? $('file').click() : openCfg();
 $('file').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; addFiles(fs); };
 $('btnCfg').onclick = openCfg;
 $('count').onclick = () => { if ($('count').title) toast($('count').title); };
+$('sync').onclick = () => newer ? location.reload() : sync();
+$('warn').onclick = () => $('warn').dataset.kind === 'sync' ? sync() : location.reload();
+$('btnReset').onclick = () => {
+  for (const k of ['fType', 'fSeason', 'fOwner', 'fColor', 'fPlace', 'fStatus']) $(k).value = '';
+  $('fReview').checked = false; $('fQ').value = '';
+  save(LS_FILTER, {}); render();
+};
 $('grid').onclick = e => {
   const hd = e.target.closest('.brk');
   if (hd) {   // 見出しを押すと、その区切りをたたむ／開く
@@ -702,6 +740,7 @@ $('eType').onchange = () => {
 };
 $('formEdit').onsubmit = e => { e.preventDefault(); saveEdit(); };
 $('eCancel').onclick = () => { $('dlgEdit').close(); editing = null; };
+$('dlgEdit').addEventListener('close', () => { editing = null; });   // Escなどで閉じたときも、最新データの取得が止まらないように
 $('eDispose').onclick = () => saveEdit({ status: '処分済み' });
 $('eDelete').onclick = async () => {
   const b = $('eDelete');
@@ -775,6 +814,7 @@ $('cShare').onclick = async () => {
   catch (e) { toast(link, 15000); }
 };
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !pending.length && !editing) sync(); });
+window.addEventListener('pageshow', e => { if (e.persisted && !pending.length && !editing) sync(); });
 
 // ---------- 起動 ----------
 (async function init() {
